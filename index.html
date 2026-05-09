@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Galaxy Morphology Classifier</title>
+
+  <!--
+    Content Security Policy
+    ─────────────────────────────────────────────────────────────────
+    Restricts what the browser is allowed to load or connect to.
+    This prevents XSS attacks from loading external malicious scripts
+    or exfiltrating data to unknown servers.
+
+    • default-src 'self' 'unsafe-inline'  — only inline styles/scripts, no external JS libs
+    • img-src                             — images allowed from NASA CDN and CDS sky surveys only
+    • connect-src                         — network calls restricted to the three astronomy APIs
+  -->
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' 'unsafe-inline';
+             img-src 'self' data: blob:
+               https://images-assets.nasa.gov
+               https://alasky.cds.unistra.fr
+               https://alaskybis.cds.unistra.fr;
+             connect-src
+               https://images-api.nasa.gov
+               https://ned.ipac.caltech.edu
+               https://alasky.cds.unistra.fr
+               https://alaskybis.cds.unistra.fr;">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ═══════════════════════════════════════════
+       HEADER
+       App title, subtitle, and the Security modal trigger.
+  ═══════════════════════════════════════════ -->
+  <div class="hdr">
+    <!-- Decorative galaxy SVG icon -->
+    <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+      <circle cx="19" cy="19" r="15" stroke="#EF9F27" stroke-width="1"/>
+      <ellipse cx="19" cy="19" rx="15" ry="5" stroke="#BA7517" stroke-width=".7" opacity=".65"/>
+      <circle cx="19" cy="19" r="2.8" fill="#EF9F27"/>
+      <circle cx="6"  cy="14" r=".9"  fill="#EF9F27" opacity=".35"/>
+      <circle cx="33" cy="24" r=".7"  fill="#EF9F27" opacity=".28"/>
+    </svg>
+
+    <div class="hdr-text">
+      <strong>Galaxy Morphology Classifier</strong>
+      Pixel Analysis Engine · NASA Image Library · NED Catalog · hips2fits
+    </div>
+
+    <div class="hdr-btns">
+      <button class="icon-btn" onclick="openModal('security')">🔒 Security</button>
+    </div>
+  </div>
+
+  <div class="sep"></div>
+
+  <!-- ═══════════════════════════════════════════
+       INPUT TABS
+       Three ways to get a galaxy image into the app:
+         1. Search NASA Image Library API
+         2. Look up a known object name via NED, then choose a hips2fits sky survey cutout
+         3. Upload a local image file directly
+  ═══════════════════════════════════════════ -->
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('search')">Search NASA library</button>
+    <button class="tab"        onclick="switchTab('name')">Lookup by name</button>
+    <button class="tab"        onclick="switchTab('upload')">Upload image</button>
+  </div>
+
+  <!-- ── Tab 1: NASA Image Library search ── -->
+  <div id="tab-search">
+    <div class="search-row">
+      <input
+        type="text"
+        id="nasa-q"
+        placeholder="e.g. spiral galaxy, NGC 1300, barred elliptical…"
+        maxlength="200"
+        onkeydown="if(event.key==='Enter') nasaSearch()"
+        aria-label="NASA image search query"
+      >
+      <button class="btn btn-amber" onclick="nasaSearch()" id="nasa-btn">Search ↗</button>
+    </div>
+
+    <!-- Status message (spinner while loading, error text on failure) -->
+    <div class="status" id="nasa-status" role="status"></div>
+
+    <!-- Image result cards are injected here by nasaSearch() in app.js -->
+    <div id="nasa-grid" class="results-grid"></div>
+
+    <!-- Pagination — only shown when results exceed 20 -->
+    <div id="nasa-pager" class="pager hidden">
+      <button class="btn btn-sm" id="nasa-prev" onclick="nasaPage(-1)">← Prev</button>
+      <span class="pager-info" id="nasa-pager-info"></span>
+      <button class="btn btn-sm" id="nasa-next" onclick="nasaPage(1)">Next →</button>
+    </div>
+  </div>
+
+  <!-- ── Tab 2: NED object name lookup ── -->
+  <div id="tab-name" class="hidden">
+    <div class="search-row">
+      <input
+        type="text"
+        id="ned-q"
+        placeholder="e.g. NGC 1300, M51, Messier 101…"
+        maxlength="120"
+        onkeydown="if(event.key==='Enter') nameLookup()"
+        aria-label="Galaxy name for NED lookup"
+      >
+      <button class="btn btn-amber" onclick="nameLookup()" id="ned-btn">Lookup ↗</button>
+    </div>
+
+    <div class="status" id="ned-status" role="status"></div>
+
+    <!-- NED result + hips2fits cutouts — hidden until a successful lookup -->
+    <div id="ned-result" class="hidden">
+      <!-- NED data card: canonical name, RA, Dec, redshift, object type -->
+      <div class="ned-card" style="margin-top:14px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">NED OBJECT</div>
+        <div style="font-size:16px;font-weight:500;color:var(--amber);" id="ned-name"></div>
+        <!-- Field grid populated by nameLookup() in app.js -->
+        <div class="ned-grid" id="ned-fields"></div>
+      </div>
+
+      <!-- Multi-wavelength sky cutout cards (DSS2, SDSS, Pan-STARRS, 2MASS, GALEX)
+           populated by loadHipsCutouts() in app.js -->
+      <div id="hips-previews" class="results-grid"></div>
+      <div class="status" id="hips-status" role="status"></div>
+    </div>
+  </div>
+
+  <!-- ── Tab 3: Local file upload ── -->
+  <div id="tab-upload" class="hidden">
+    <!-- Clicking the visible drop zone triggers the hidden file input -->
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <!-- Hidden: accept restricts MIME types; JS validates size on selection -->
+      <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif">
+
+      <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true"
+           style="margin-bottom:10px;opacity:.35;">
+        <circle cx="18" cy="18" r="13" stroke="#EF9F27" stroke-width="1"/>
+        <ellipse cx="18" cy="18" rx="13" ry="4.5" stroke="#EF9F27" stroke-width=".7"/>
+        <circle cx="18" cy="18" r="2.5" fill="#EF9F27"/>
+      </svg>
+      <p>Drop a galaxy image here, or click to browse</p>
+      <p class="sub">JPEG · PNG · WEBP — max 10 MB</p>
+    </div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════
+       SELECTED IMAGE + ANALYZE BUTTON
+       Shown once a source image has been chosen from any tab.
+       Hidden by default; app.js calls showAnalyzeSection() to reveal it.
+  ═══════════════════════════════════════════ -->
+  <div id="analyze-section" class="hidden" style="margin-top:20px;">
+    <div class="sep"></div>
+
+    <!-- Preview of the currently selected image -->
+    <div class="preview-wrap">
+      <img id="main-preview" src="" alt="Selected galaxy image">
+      <span class="preview-tag" id="preview-label">TARGET</span>
+    </div>
+
+    <!-- Single action: run the pixel analysis pipeline (entirely local, no network) -->
+    <button
+      class="btn btn-amber"
+      style="width:100%;margin-top:10px;"
+      id="px-btn"
+      onclick="runPixelAnalysis()"
+    >
+      ⬡ Run Pixel Analysis
+    </button>
+
+    <div class="status" id="analyze-status" role="status"></div>
+  </div>
+
+
+  <!-- ═══════════════════════════════════════════
+       ANALYSIS PANEL
+       Appears during and after a pixel analysis run.
+       Left column: four canvas visualisations + brightness profile chart.
+       Right column: live console log of each pipeline step.
+  ═══════════════════════════════════════════ -->
+  <div id="analysis-panel" class="hidden">
+    <div class="sep"></div>
+    <div style="font-size:9px;color:var(--text3);letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;">
+      Pixel Analysis Pipeline
+    </div>
+
+    <div class="analysis-layout">
+
+      <!-- ── Visualisation strip ── -->
+      <div class="viz-strip">
+
+        <!-- Row 1: Grayscale conversion and asinh contrast stretch -->
+        <div class="viz-row">
+          <div class="viz-card">
+            <div class="viz-label">GRAYSCALE (Rec.709)</div>
+            <!-- Filled by renderGrayCanvas('cv-gray', …) -->
+            <canvas id="cv-gray"></canvas>
+          </div>
+          <div class="viz-card">
+            <div class="viz-label">CONTRAST STRETCH (asinh)</div>
+            <!-- Filled by renderGrayCanvas('cv-contrast', …) with asinh map function -->
+            <canvas id="cv-contrast"></canvas>
+          </div>
+        </div>
+
+        <!-- Row 2: Sobel edge map and isophote ellipse overlay -->
+        <div class="viz-row">
+          <div class="viz-card">
+            <div class="viz-label">EDGE DETECTION (Sobel)</div>
+            <!-- Filled by renderGrayCanvas('cv-edge', …) -->
+            <canvas id="cv-edge"></canvas>
+          </div>
+          <div class="viz-card">
+            <div class="viz-label">ISOPHOTE OVERLAY</div>
+            <!-- Filled by renderIsoCanvas() — shows r₂₀, rₑ, r₈₀ ellipses + centroid -->
+            <canvas id="cv-iso"></canvas>
+          </div>
+        </div>
+
+        <!-- Radial brightness profile chart -->
+        <div class="profile-card">
+          <div class="viz-label">RADIAL BRIGHTNESS PROFILE</div>
+          <!-- Filled by renderProfileCanvas() — mean luminance vs. radius in pixels -->
+          <canvas id="cv-profile" style="height:130px;"></canvas>
+        </div>
+
+      </div><!-- /viz-strip -->
+
+      <!-- ── Analysis console ── -->
+      <div class="console-wrap">
+        <div class="console-hdr">
+          <span class="console-hdr-title">ANALYSIS CONSOLE</span>
+          <!-- Decorative traffic-light dots, cosmetic only -->
+          <div style="display:flex;gap:5px;" aria-hidden="true">
+            <span class="console-dot" style="background:#E24B4A;"></span>
+            <span class="console-dot" style="background:#EF9F27;"></span>
+            <span class="console-dot" style="background:#3BA55D;"></span>
+          </div>
+        </div>
+        <!-- Log lines are appended here by clog() in app.js -->
+        <div class="console-scroll" id="console-out" role="log" aria-live="polite"></div>
+      </div>
+
+    </div><!-- /analysis-layout -->
+  </div><!-- /analysis-panel -->
+
+
+  <!-- ═══════════════════════════════════════════
+       RESULTS SECTION
+       Populated by renderPixelResults() after the pipeline completes.
+       Hidden by default.
+  ═══════════════════════════════════════════ -->
+  <div id="results-section" class="hidden">
+    <div class="sep"></div>
+
+    <!-- Section header with raw-JSON toggle link -->
+    <div class="slbl">
+      Classification
+      <a onclick="toggleRaw()" role="button" tabindex="0">raw JSON</a>
+    </div>
+
+    <!-- Primary classification card: Hubble type, simplified class, confidence bar -->
+    <div class="cls-card">
+      <div class="cls-top">
+        <div>
+          <!-- e.g. "Sb" or "E4" — set by renderPixelResults() -->
+          <div class="hubble-big" id="r-type">—</div>
+          <!-- e.g. "Spiral Galaxy" -->
+          <div class="cls-name"  id="r-name">—</div>
+        </div>
+        <div class="conf-block">
+          <div class="conf-lbl">CONFIDENCE</div>
+          <div class="conf-pct" id="r-conf">—</div>
+          <!-- Width of conf-fill is set to the confidence percentage -->
+          <div class="conf-bg">
+            <div class="conf-fill" id="r-conf-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Short description of the analysis method used -->
+      <div class="cls-method" id="r-method">—</div>
+    </div>
+
+    <!-- NED catalog comparison — only shown when object was looked up via Tab 2 -->
+    <div id="r-compare" class="hidden">
+      <div class="compare-row">
+        <div style="font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">
+          Pixel Analysis vs. NED Catalog
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <div style="font-size:9px;color:var(--text3);">PIXEL RESULT</div>
+            <div style="font-size:12px;color:var(--text);margin-top:3px;" id="cmp-px">—</div>
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--text3);">NED CATALOG</div>
+            <div style="font-size:12px;color:var(--text);margin-top:3px;" id="cmp-ned">—</div>
+          </div>
+        </div>
+        <!-- Agreement / discrepancy pill + explanation -->
+        <div style="margin-top:10px;font-size:11px;" id="cmp-verdict"></div>
+      </div>
+    </div>
+
+    <!-- Hubble tuning-fork chip strip — active chip highlighted in amber -->
+    <div class="slbl">Hubble sequence position</div>
+    <div class="chips" id="r-chips"></div>
+
+    <!-- Measurements table: axis ratio, Sérsic n, CAS indices, etc. -->
+    <div class="slbl">Structural measurements</div>
+    <div class="meas-table" id="r-meas"></div>
+
+    <!-- Two-column card row: detected features + CAS indices summary -->
+    <div class="grid2" style="margin-top:10px;">
+      <div class="card">
+        <div class="card-lbl">Detected morphological features</div>
+        <!-- List items populated by renderPixelResults() -->
+        <ul class="feat-list" id="r-feats"></ul>
+      </div>
+      <div class="card">
+        <div class="card-lbl">CAS indices (non-parametric)</div>
+        <!-- C, A, S values + qualitative labels, populated by renderPixelResults() -->
+        <div id="r-cas" style="font-size:12px;color:var(--text2);line-height:2.1;"></div>
+      </div>
+    </div>
+
+    <!-- Raw JSON dump — hidden until user clicks "raw JSON" link above -->
+    <div id="raw-json"></div>
+
+    <button class="btn btn-sm" style="width:100%;margin-top:16px;" onclick="resetAll()">
+      ↩ Analyze another galaxy
+    </button>
+  </div><!-- /results-section -->
+
+</div><!-- /wrap -->
+
+
+<!-- ═══════════════════════════════════════════
+     SECURITY MODAL
+     Opened by the 🔒 button in the header.
+     Documents the security posture of this app and mitigations applied.
+     Closed by the ✕ button, clicking the overlay backdrop, or pressing Escape.
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-security" role="dialog" aria-modal="true" aria-label="Security considerations">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('security')" aria-label="Close">✕ Close</button>
+    <h2>🔒 Security Considerations</h2>
+    <div class="modal-sub">
+      Full audit of this app's security posture. Items marked ✓ Fixed have been mitigated in this build.
+    </div>
+
+    <!-- HIGH severity items -->
+    <div class="sec-item">
+      <span class="sev-pill sev-hi sec-sev">HIGH</span>
+      <span class="sec-title">XSS via unsanitized third-party data</span>
+      <div class="sec-desc">
+        NASA image titles, NED galaxy names, and other API strings injected into innerHTML
+        without escaping would allow a compromised API response to execute JavaScript in your
+        browser — stealing session data, redirecting you, or silently modifying the page.
+      </div>
+      <div class="sec-fix">
+        All external data passes through the <code>esc()</code> helper which escapes &amp;, &lt;, &gt;,
+        &quot;, and &#39; before any innerHTML insertion. Structural DOM elements use
+        <code>textContent</code> exclusively.
+      </div>
+    </div>
+
+    <!-- MEDIUM severity items -->
+    <div class="sec-item">
+      <span class="sev-pill sev-med sec-sev">MED</span>
+      <span class="sec-title">No Content Security Policy (previous version)</span>
+      <div class="sec-desc">
+        Without a CSP, any injected script executes without restriction, and the page can freely
+        load external resources or phone home.
+      </div>
+      <div class="sec-fix">
+        CSP meta tag in the &lt;head&gt; restricts scripts to self+inline, images to four trusted
+        astronomy CDNs, and network connections to the three astronomy APIs only.
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <span class="sev-pill sev-med sec-sev">MED</span>
+      <span class="sec-title">Unrestricted file upload</span>
+      <div class="sec-desc">
+        Without validation, a user could upload a 500 MB TIFF or a file with a spoofed MIME type,
+        crashing the browser tab or causing the canvas decoder to fail silently.
+      </div>
+      <div class="sec-fix">
+        Upload restricted to <code>image/jpeg, image/png, image/webp, image/gif</code> at the input
+        <code>accept</code> attribute level, with an additional JS size check capped at 10 MB.
+      </div>
+    </div>
+
+    <!-- LOW severity items -->
+    <div class="sec-item">
+      <span class="sev-pill sev-lo sec-sev">LOW</span>
+      <span class="sec-title">Canvas pixel access (CORS taint)</span>
+      <div class="sec-desc">
+        Drawing cross-origin images to a canvas and then calling <code>getImageData()</code> is
+        blocked by the browser if the server doesn't set permissive CORS headers. This is a browser
+        security feature, not a flaw, but it can cause silent failures.
+      </div>
+      <div class="sec-fix">
+        <code>crossOrigin="anonymous"</code> is set on all remote image loads. Canvas read failures
+        are caught and the user is shown a message directing them to the Upload tab instead.
+      </div>
+    </div>
+
+    <div class="sec-item">
+      <span class="sev-pill sev-lo sec-sev">LOW</span>
+      <span class="sec-title">URL validation before canvas load</span>
+      <div class="sec-desc">
+        An arbitrary URL injected into the image loading path could load from an untrusted domain
+        and attempt to exfiltrate pixel data.
+      </div>
+      <div class="sec-fix">
+        <code>setSelectedImage()</code> validates all non-data URLs against a hard-coded
+        <code>TRUSTED_DOMAINS</code> allowlist before passing them to the canvas loader.
+      </div>
+    </div>
+
+  </div><!-- /modal -->
+</div><!-- /modal-overlay -->
+
+
+<!-- app.js loaded at end of body so the DOM is fully parsed before any JS runs -->
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1130 @@
+/*
+ * style.css — Galaxy Morphology Classifier
+ * ─────────────────────────────────────────────────────────────────
+ * Table of contents:
+ *   1.  Design tokens (CSS custom properties)
+ *   2.  Reset & base
+ *   3.  Layout wrapper
+ *   4.  Header
+ *   5.  Horizontal rule separator
+ *   6.  Input tabs
+ *   7.  Search row (text input + button)
+ *   8.  Buttons
+ *   9.  File drop zone (upload tab)
+ *  10.  Image result grid & cards
+ *  11.  Selected image preview
+ *  12.  NED catalog card
+ *  13.  Status messages & loading spinner
+ *  14.  Pagination controls
+ *  15.  Analysis panel layout
+ *  16.  Visualisation canvases (viz strip)
+ *  17.  Analysis console (log output)
+ *  18.  Results — classification card
+ *  19.  Results — Hubble sequence chips
+ *  20.  Results — measurements table
+ *  21.  Results — two-column card grid
+ *  22.  Results — feature list
+ *  23.  Results — NED comparison row
+ *  24.  Results — section labels & raw JSON toggle
+ *  25.  Security modal
+ *  26.  Utility
+ */
+
+
+/* ═══════════════════════════════════════════════════════════
+   1. DESIGN TOKENS
+   All colours, spacing units, and font stacks as CSS variables.
+   Changing a value here updates it everywhere in the stylesheet.
+═══════════════════════════════════════════════════════════ */
+:root {
+  /* Background layers — dark space theme, progressively lighter */
+  --bg:  #080810; /* page background                     */
+  --bg2: #0e0e1a; /* card / panel background             */
+  --bg3: #14141f; /* inset / secondary surface           */
+  --bg4: #1a1a28; /* hover / tertiary surface            */
+
+  /* Accent palette */
+  --amber:  #EF9F27; /* primary accent — amber/gold        */
+  --amber2: #BA7517; /* darker amber for borders           */
+  --amberL: #FAEEDA; /* very light amber for chip fills    */
+  --amberD: #633806; /* dark amber for text on light fill  */
+
+  --teal:   #1D9E75;
+  --tealL:  #9FE1CB; /* light teal — success / match pills */
+
+  --blue:   #378ADD;
+  --blueL:  #B5D4F4; /* light blue — badge text            */
+
+  --coral:  #D85A30;
+  --coralL: #F5C4B3; /* light coral — discrepancy pills    */
+
+  --red:    #E24B4A;
+  --redL:   #F7C1C1; /* light red — high-severity badges   */
+
+  --green:  #3BA55D;
+  --greenL: #A8D9B5; /* light green — OK console messages  */
+
+  --purple:  #9B6DFF;
+  --purpleL: #CDB8FF; /* light purple — INFO console messages */
+
+  /* Text shades */
+  --text:  #ddd8cc; /* primary text                        */
+  --text2: #7a7670; /* secondary / subdued text            */
+  --text3: #4a4640; /* tertiary / label text               */
+
+  /* Border shades */
+  --border:  rgba(255,255,255,.07);  /* subtle border       */
+  --border2: rgba(255,255,255,.13);  /* slightly more visible */
+
+  /* Typography */
+  --mono: 'Courier New', Courier, monospace;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   2. RESET & BASE
+═══════════════════════════════════════════════════════════ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background:  var(--bg);
+  color:       var(--text);
+  font-family: var(--mono);
+  min-height:  100vh;
+  padding:     28px 16px 80px; /* extra bottom padding so results don't sit against the viewport edge */
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   3. LAYOUT WRAPPER
+   Single centred column, max 960 px wide.
+═══════════════════════════════════════════════════════════ */
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   4. HEADER
+   SVG icon + title/subtitle text + right-aligned button group.
+═══════════════════════════════════════════════════════════ */
+.hdr {
+  display:     flex;
+  align-items: center;
+  gap:         14px;
+  margin-bottom: 8px;
+}
+
+.hdr-text {
+  font-size:      10px;
+  color:          var(--text2);
+  letter-spacing: .12em;
+}
+
+/* App title — larger, amber, slightly looser tracking */
+.hdr-text strong {
+  display:        block;
+  font-size:      18px;
+  color:          var(--amber);
+  letter-spacing: .04em;
+  font-weight:    500;
+}
+
+/* Container for header action buttons (e.g. 🔒 Security) */
+.hdr-btns {
+  margin-left: auto; /* push to the far right */
+  display:     flex;
+  gap:         6px;
+  flex-shrink: 0;
+}
+
+/* Small monospace buttons used in the header */
+.icon-btn {
+  background:     transparent;
+  border:         1px solid var(--border2);
+  color:          var(--text2);
+  font-family:    var(--mono);
+  font-size:      10px;
+  letter-spacing: .07em;
+  padding:        6px 12px;
+  border-radius:  6px;
+  cursor:         pointer;
+  transition:     border-color .18s, color .18s;
+}
+
+.icon-btn:hover {
+  border-color: var(--amber);
+  color:        var(--amber);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   5. SEPARATOR
+   Thin horizontal rule used between major sections.
+═══════════════════════════════════════════════════════════ */
+.sep {
+  height:     1px;
+  background: var(--border);
+  margin:     14px 0;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   6. INPUT TABS
+   Three equal-width tab buttons that switch the active input method.
+═══════════════════════════════════════════════════════════ */
+.tabs {
+  display:       flex;
+  gap:           2px;
+  margin-bottom: 18px;
+}
+
+.tab {
+  flex:           1;
+  background:     var(--bg2);
+  border:         1px solid var(--border);
+  border-radius:  6px;
+  padding:        9px 12px;
+  font-family:    var(--mono);
+  font-size:      11px;
+  letter-spacing: .08em;
+  color:          var(--text2);
+  cursor:         pointer;
+  text-align:     center;
+  transition:     border-color .18s, color .18s, background .18s;
+}
+
+.tab:hover {
+  border-color: var(--border2);
+  color:        var(--text);
+}
+
+/* Active state: highlighted amber border and background tint */
+.tab.active {
+  background:   var(--bg3);
+  border-color: var(--amber2);
+  color:        var(--amber);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   7. SEARCH ROW
+   Flex row with a text input and a submit button side by side.
+═══════════════════════════════════════════════════════════ */
+.search-row {
+  display: flex;
+  gap:     8px;
+}
+
+.search-row input {
+  flex:           1;
+  background:     var(--bg2);
+  border:         1px solid var(--border2);
+  border-radius:  7px;
+  padding:        10px 14px;
+  font-family:    var(--mono);
+  font-size:      13px;
+  color:          var(--text);
+  outline:        none;
+  transition:     border-color .18s;
+}
+
+.search-row input:focus {
+  border-color: var(--amber2);
+}
+
+.search-row input::placeholder {
+  color: var(--text3);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   8. BUTTONS
+   Base .btn style with two colour modifiers: amber (primary) and blue.
+   Also a small-size modifier and a disabled state.
+═══════════════════════════════════════════════════════════ */
+.btn {
+  background:     transparent;
+  border:         1px solid var(--border2);
+  color:          var(--text);
+  font-family:    var(--mono);
+  font-size:      12px;
+  letter-spacing: .06em;
+  padding:        10px 18px;
+  border-radius:  7px;
+  cursor:         pointer;
+  transition:     border-color .18s, color .18s, background .18s;
+  white-space:    nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--amber);
+  color:        var(--amber);
+}
+
+.btn:disabled {
+  opacity: .4;
+  cursor:  not-allowed;
+}
+
+/* Amber variant — used for primary actions */
+.btn-amber {
+  border-color: var(--amber2);
+  color:        var(--amber);
+}
+
+.btn-amber:hover:not(:disabled) {
+  background: rgba(239,159,39,.08);
+}
+
+/* Blue variant — was used for secondary AI action, kept for potential reuse */
+.btn-blue {
+  border-color: rgba(55,138,221,.5);
+  color:        var(--blueL);
+}
+
+.btn-blue:hover:not(:disabled) {
+  background: rgba(55,138,221,.08);
+}
+
+/* Small size modifier — for pagination, reset, etc. */
+.btn-sm {
+  font-size: 10px;
+  padding:   6px 12px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   9. FILE DROP ZONE
+   Dashed border box that accepts drag-and-drop or click-to-browse.
+═══════════════════════════════════════════════════════════ */
+#drop-zone {
+  border:        1px dashed var(--border2);
+  border-radius: 10px;
+  padding:       40px 24px;
+  text-align:    center;
+  cursor:        pointer;
+  background:    var(--bg2);
+  transition:    border-color .2s, background .2s;
+}
+
+#drop-zone:hover,
+#drop-zone.dragging { /* .dragging applied by JS during dragover */
+  border-color: var(--amber);
+  background:   var(--bg3);
+}
+
+#drop-zone p {
+  font-size: 13px;
+  color:     var(--text2);
+}
+
+#drop-zone p.sub {
+  font-size:  11px;
+  color:      var(--text3);
+  margin-top: 4px;
+}
+
+/* The actual <input type="file"> is visually hidden; the drop zone is the UI */
+#file-input {
+  display: none;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   10. IMAGE RESULT GRID & CARDS
+   Responsive auto-fill grid of thumbnail cards. Used for both
+   NASA search results and hips2fits sky cutouts.
+═══════════════════════════════════════════════════════════ */
+.results-grid {
+  display:               grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap:                   8px;
+  margin-top:            14px;
+}
+
+.img-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 8px;
+  overflow:      hidden;
+  cursor:        pointer;
+  transition:    border-color .18s;
+}
+
+.img-card:hover {
+  border-color: var(--amber2);
+}
+
+/* Selected state — applied by JS when user clicks a card */
+.img-card.selected {
+  border-color: var(--amber);
+  border-width: 2px;
+}
+
+/* Square thumbnail image — crops to fill the cell */
+.img-card img {
+  width:        100%;
+  aspect-ratio: 1;
+  object-fit:   cover;
+  display:      block;
+  background:   #000; /* placeholder while loading */
+}
+
+.img-card-info {
+  padding: 7px 9px;
+}
+
+.img-card-title {
+  font-size:     10px;
+  color:         var(--text);
+  line-height:   1.5;
+  white-space:   nowrap;
+  overflow:      hidden;
+  text-overflow: ellipsis;
+}
+
+.img-card-sub {
+  font-size:  9px;
+  color:      var(--text3);
+  margin-top: 2px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   11. SELECTED IMAGE PREVIEW
+   Centred black box that displays the chosen image before analysis.
+═══════════════════════════════════════════════════════════ */
+.preview-wrap {
+  background:      #000;
+  border-radius:   8px;
+  overflow:        hidden;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  max-height:      300px;
+  position:        relative;
+  border:          1px solid var(--border);
+  margin-bottom:   12px;
+}
+
+.preview-wrap img {
+  max-width:  100%;
+  max-height: 300px;
+  display:    block;
+}
+
+/* Small amber label badge overlaid in the top-left corner */
+.preview-tag {
+  position:       absolute;
+  top:            8px;
+  left:           10px;
+  font-size:      9px;
+  letter-spacing: .12em;
+  color:          var(--amber);
+  background:     rgba(0,0,0,.75);
+  padding:        2px 8px;
+  border-radius:  3px;
+  border:         1px solid rgba(239,159,39,.3);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   12. NED CATALOG CARD
+   Shows canonical name, RA, Dec, redshift, and object type
+   after a successful NED name lookup.
+═══════════════════════════════════════════════════════════ */
+.ned-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 9px;
+  padding:       14px 16px;
+  margin-bottom: 12px;
+}
+
+/* Auto-fill grid of data fields inside the NED card */
+.ned-grid {
+  display:               grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap:                   8px;
+  margin-top:            10px;
+}
+
+.ned-lbl {
+  font-size:      9px;
+  color:          var(--text3);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.ned-val {
+  font-size:   13px;
+  color:       var(--text);
+  font-weight: 500;
+  margin-top:  2px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   13. STATUS MESSAGES & SPINNER
+   Inline feedback areas used beneath search fields and buttons.
+   Hidden by default (display:none); shown by JS with showStatus().
+═══════════════════════════════════════════════════════════ */
+.status {
+  font-size:  12px;
+  color:      var(--text2);
+  margin-top: 10px;
+  display:    none;
+  line-height: 1.7;
+}
+
+/* Error variant — red text */
+.status.err {
+  color: #F09595;
+}
+
+/* Inline animated spinner — used inside status message HTML */
+.spinner {
+  display:        inline-block;
+  width:          12px;
+  height:         12px;
+  border:         1.5px solid var(--border2);
+  border-top-color: var(--amber);
+  border-radius:  50%;
+  animation:      spin .7s linear infinite;
+  vertical-align: middle;
+  margin-right:   8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   14. PAGINATION CONTROLS
+   Prev / Page info / Next row for NASA search results.
+═══════════════════════════════════════════════════════════ */
+.pager {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     center;
+  margin-top:      12px;
+}
+
+.pager-info {
+  font-size: 11px;
+  color:     var(--text3);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   15. ANALYSIS PANEL LAYOUT
+   Two-column grid: visualisation canvases on the left,
+   console log on the right. Stacks to single column on mobile.
+═══════════════════════════════════════════════════════════ */
+#analysis-panel {
+  margin-top: 20px;
+}
+
+.analysis-layout {
+  display:               grid;
+  grid-template-columns: 1fr 1fr;
+  gap:                   12px;
+}
+
+@media (max-width: 700px) {
+  .analysis-layout {
+    grid-template-columns: 1fr; /* stack on narrow screens */
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   16. VISUALISATION CANVASES (VIZ STRIP)
+   Left column of the analysis panel: four canvases in a 2×2
+   grid plus a wide profile chart below.
+═══════════════════════════════════════════════════════════ */
+.viz-strip {
+  display:        flex;
+  flex-direction: column;
+  gap:            8px;
+}
+
+/* Row of two equal-width canvas cards */
+.viz-row {
+  display:               grid;
+  grid-template-columns: 1fr 1fr;
+  gap:                   6px;
+}
+
+/* Individual canvas card with a label header */
+.viz-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 7px;
+  overflow:      hidden;
+}
+
+.viz-label {
+  font-size:      9px;
+  color:          var(--text3);
+  letter-spacing: .1em;
+  padding:        5px 8px;
+  background:     var(--bg3);
+}
+
+/* Canvas fills the card width, maintains square aspect ratio
+   image-rendering: pixelated keeps pixel art crisp at small sizes */
+.viz-card canvas {
+  display:         block;
+  width:           100%;
+  aspect-ratio:    1;
+  image-rendering: pixelated;
+}
+
+/* Wider card for the radial profile chart (full row width) */
+.profile-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 7px;
+  overflow:      hidden;
+}
+
+.profile-card canvas {
+  display: block;
+  width:   100%;
+  height:  120px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   17. ANALYSIS CONSOLE
+   Terminal-style scrollable log panel. Each log line has a
+   timestamp, a coloured type tag, and a message.
+═══════════════════════════════════════════════════════════ */
+.console-wrap {
+  background:    #050508; /* near-black, distinct from --bg */
+  border:        1px solid var(--border2);
+  border-radius: 9px;
+  overflow:      hidden;
+  display:       flex;
+  flex-direction: column;
+}
+
+/* Header bar with decorative traffic-light dots */
+.console-hdr {
+  background: var(--bg3);
+  padding:    8px 12px;
+  display:    flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.console-hdr-title {
+  font-size:      10px;
+  color:          var(--text3);
+  letter-spacing: .1em;
+}
+
+/* Decorative macOS-style dot (red/amber/green) — cosmetic only */
+.console-dot {
+  width:         8px;
+  height:        8px;
+  border-radius: 50%;
+  display:       inline-block;
+}
+
+/* Scrollable log area — fixed height with smooth auto-scroll */
+.console-scroll {
+  height:          420px;
+  overflow-y:      auto;
+  padding:         10px 4px;
+  font-size:       11px;
+  line-height:     1.7;
+  scroll-behavior: smooth;
+}
+
+/* Individual log line: timestamp | tag | message */
+.log-line {
+  display:    flex;
+  gap:        8px;
+  padding:    1px 10px;
+  font-family: var(--mono);
+}
+
+.log-line:hover {
+  background: rgba(255,255,255,.03);
+}
+
+/* Timestamp column — fixed width, very dim */
+.log-ts {
+  color:      rgba(255,255,255,.2);
+  font-size:  10px;
+  flex-shrink: 0;
+  width:      56px;
+}
+
+/* Type tag column — coloured by log type */
+.log-tag {
+  font-size:      9px;
+  font-weight:    500;
+  flex-shrink:    0;
+  width:          44px;
+  letter-spacing: .06em;
+  text-align:     right;
+}
+
+/* Default message colour */
+.log-msg { color: var(--text2); }
+
+/* Tag colours by type */
+.tag-step { color: #378ADD; }
+.tag-data { color: #9FE1CB; }
+.tag-warn { color: #FFF3A0; }
+.tag-ok   { color: #A8D9B5; }
+.tag-err  { color: #F7C1C1; }
+.tag-info { color: #CDB8FF; }
+
+/* Message colours by type — applied as inline spans by clog() in app.js */
+.msg-step   { color: #B5D4F4; }
+.msg-data   { color: var(--text); }
+.msg-metric { color: var(--amber); }  /* numeric measurement values */
+.msg-ok     { color: var(--greenL); }
+.msg-warn   { color: #FFF3A0; }
+.msg-err    { color: var(--redL); }
+.msg-info   { color: var(--purpleL); }
+.msg-dim    { color: var(--text3); }  /* field labels next to metrics */
+
+
+/* ═══════════════════════════════════════════════════════════
+   18. RESULTS — CLASSIFICATION CARD
+   Primary result card with Hubble type, simplified class name,
+   and a confidence percentage with an animated fill bar.
+═══════════════════════════════════════════════════════════ */
+.cls-card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-left:   3px solid var(--amber); /* amber left accent stripe */
+  border-radius: 9px;
+  padding:       16px 18px;
+  margin-bottom: 10px;
+}
+
+/* Row with big Hubble type on the left, confidence block on the right */
+.cls-top {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     flex-start;
+  flex-wrap:       wrap;
+  gap:             14px;
+}
+
+/* The large Hubble type code (e.g. "Sb", "E4") */
+.hubble-big {
+  font-size:   44px;
+  font-weight: 500;
+  color:       var(--amber);
+  line-height: 1;
+}
+
+/* Plain-English class name below the Hubble code */
+.cls-name {
+  font-size:  12px;
+  color:      var(--text2);
+  margin-top: 4px;
+}
+
+/* Right-side confidence block */
+.conf-block {
+  text-align: right;
+  min-width:  100px;
+}
+
+.conf-pct {
+  font-size:   22px;
+  font-weight: 500;
+  color:       var(--text);
+}
+
+.conf-lbl {
+  font-size:      9px;
+  color:          var(--text3);
+  letter-spacing: .1em;
+}
+
+/* Thin progress bar under the percentage */
+.conf-bg {
+  background:    var(--border);
+  border-radius: 2px;
+  height:        3px;
+  margin-top:    6px;
+}
+
+/* Fill that animates to the confidence % width */
+.conf-fill {
+  height:        3px;
+  border-radius: 2px;
+  background:    var(--amber);
+  transition:    width .7s ease;
+}
+
+/* Method description line at the bottom of the classification card */
+.cls-method {
+  font-size:   10px;
+  color:       var(--text3);
+  margin-top:  8px;
+  padding-top: 8px;
+  border-top:  1px solid var(--border);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   19. RESULTS — HUBBLE SEQUENCE CHIPS
+   A row of small chips representing each Hubble type.
+   The active chip (matching the classification) is highlighted.
+═══════════════════════════════════════════════════════════ */
+.chips {
+  display:    flex;
+  flex-wrap:  wrap;
+  gap:        4px;
+  margin-top: 8px;
+}
+
+.chip {
+  font-size:     10px;
+  padding:       3px 9px;
+  border:        1px solid var(--border);
+  border-radius: 4px;
+  color:         var(--text3);
+}
+
+/* Active chip — filled amber background */
+.chip.active {
+  background:  var(--amberL);
+  color:       var(--amberD);
+  border-color: var(--amber);
+  font-weight: 500;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   20. RESULTS — MEASUREMENTS TABLE
+   Key-value rows for axis ratio, Sérsic index, CAS metrics, etc.
+═══════════════════════════════════════════════════════════ */
+.meas-table {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 9px;
+  overflow:      hidden;
+  margin-top:    10px;
+}
+
+.meas-row {
+  display:         flex;
+  justify-content: space-between;
+  align-items:     center;
+  padding:         8px 16px;
+  border-bottom:   1px solid var(--border);
+  font-size:       12px;
+}
+
+.meas-row:last-child {
+  border-bottom: none;
+}
+
+.meas-k {
+  color: var(--text2);
+}
+
+.meas-v {
+  color:       var(--text);
+  font-weight: 500;
+}
+
+/* Tiny source annotation (e.g. "px") shown after measurement values */
+.meas-src {
+  font-size:   9px;
+  color:       var(--text3);
+  margin-left: 6px;
+  font-weight: normal;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   21. RESULTS — TWO-COLUMN CARD GRID
+   Used for "Detected features" and "CAS indices" side by side.
+   Collapses to single column on narrow screens.
+═══════════════════════════════════════════════════════════ */
+.grid2 {
+  display:               grid;
+  grid-template-columns: 1fr 1fr;
+  gap:                   10px;
+  margin-top:            10px;
+}
+
+@media (max-width: 540px) {
+  .grid2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Generic info card */
+.card {
+  background:    var(--bg2);
+  border:        1px solid var(--border);
+  border-radius: 9px;
+  padding:       14px 16px;
+}
+
+/* Small uppercase label at top of card */
+.card-lbl {
+  font-size:      9px;
+  color:          var(--text3);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  margin-bottom:  10px;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   22. RESULTS — FEATURE LIST
+   Bulleted list of detected morphological features.
+   Custom amber bullet via ::before pseudo-element.
+═══════════════════════════════════════════════════════════ */
+.feat-list {
+  list-style: none;
+}
+
+.feat-list li {
+  font-size:     12px;
+  color:         var(--text2);
+  padding:       4px 0;
+  border-bottom: 1px solid var(--border);
+  display:       flex;
+  gap:           8px;
+  line-height:   1.65;
+}
+
+.feat-list li:last-child {
+  border-bottom: none;
+}
+
+/* Amber middle-dot bullet */
+.feat-list li::before {
+  content:    "·";
+  color:      var(--amber);
+  flex-shrink: 0;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   23. RESULTS — NED COMPARISON ROW
+   Only shown when the image was looked up via Tab 2.
+   Compares the pixel analysis Hubble type against what NED records.
+═══════════════════════════════════════════════════════════ */
+.compare-row {
+  background:    var(--bg3);
+  border:        1px solid var(--border);
+  border-radius: 8px;
+  padding:       12px 14px;
+  margin-top:    10px;
+}
+
+/* Agreement/discrepancy verdict pills */
+.pill {
+  font-size:     9px;
+  padding:       2px 7px;
+  border-radius: 4px;
+  font-weight:   500;
+  display:       inline-block;
+}
+
+.pill-match   { background: rgba(29,158,117,.15); color: var(--tealL);  border: 1px solid rgba(29,158,117,.3); }
+.pill-diff    { background: rgba(216,90,48,.15);  color: var(--coralL); border: 1px solid rgba(216,90,48,.3);  }
+.pill-unknown { background: rgba(255,255,255,.05); color: var(--text3); border: 1px solid var(--border);       }
+
+/* Small blue badge — used for comparable galaxy names */
+.badge {
+  font-size:     10px;
+  padding:       2px 8px;
+  border-radius: 4px;
+  background:    rgba(55,138,221,.12);
+  color:         var(--blueL);
+  border:        1px solid rgba(55,138,221,.25);
+  display:       inline-block;
+  margin:        2px 2px 0 0;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   24. RESULTS — SECTION LABELS & RAW JSON TOGGLE
+   Small uppercase labels used as section headers in the results area.
+   The "raw JSON" link is right-aligned inside the same row.
+═══════════════════════════════════════════════════════════ */
+.slbl {
+  font-size:      9px;
+  color:          var(--text3);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin:         20px 0 8px;
+  display:        flex;
+  justify-content: space-between;
+  align-items:    center;
+}
+
+/* Right-aligned underline link (e.g. "raw JSON") */
+.slbl a {
+  color:           var(--text3);
+  cursor:          pointer;
+  text-decoration: underline;
+}
+
+/* Raw JSON dump — hidden until user clicks the link */
+#raw-json {
+  display:       none;
+  font-size:     10px;
+  background:    var(--bg3);
+  border:        1px solid var(--border);
+  border-radius: 8px;
+  padding:       12px;
+  white-space:   pre-wrap;
+  word-break:    break-all;
+  color:         var(--text3);
+  margin-top:    8px;
+  max-height:    220px;
+  overflow-y:    auto;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   25. SECURITY MODAL
+   Full-screen overlay with a centred scrollable modal panel.
+   Contains severity-coded security audit items.
+═══════════════════════════════════════════════════════════ */
+
+/* Dark semi-transparent overlay that covers the whole viewport */
+.modal-overlay {
+  position:        fixed;
+  inset:           0;
+  background:      rgba(0,0,0,.82);
+  z-index:         1000;
+  display:         flex;
+  align-items:     flex-start;
+  justify-content: center;
+  padding:         32px 16px;
+  overflow-y:      auto;
+}
+
+/* Panel content box, centred inside the overlay */
+.modal {
+  background:    var(--bg2);
+  border:        1px solid var(--border2);
+  border-radius: 12px;
+  width:         100%;
+  max-width:     700px;
+  padding:       28px;
+  position:      relative;
+  margin:        auto; /* vertically centred even when shorter than viewport */
+}
+
+/* Close button in the top-right corner of the modal */
+.modal-close {
+  position:      absolute;
+  top:           14px;
+  right:         16px;
+  background:    transparent;
+  border:        1px solid var(--border);
+  color:         var(--text2);
+  font-family:   var(--mono);
+  font-size:     11px;
+  padding:       4px 10px;
+  border-radius: 5px;
+  cursor:        pointer;
+}
+
+.modal-close:hover {
+  border-color: var(--amber);
+  color:        var(--amber);
+}
+
+.modal h2 {
+  font-size:      15px;
+  color:          var(--amber);
+  letter-spacing: .05em;
+  font-weight:    500;
+  margin-bottom:  4px;
+}
+
+.modal-sub {
+  font-size:     11px;
+  color:         var(--text3);
+  margin-bottom: 20px;
+}
+
+/* Individual audit item card */
+.sec-item {
+  margin-bottom: 10px;
+  padding:       10px 14px;
+  background:    var(--bg3);
+  border-radius: 8px;
+  border:        1px solid var(--border);
+}
+
+/* Severity pill inline with the title */
+.sec-sev {
+  display:       inline-block;
+  font-size:     9px;
+  padding:       2px 6px;
+  border-radius: 4px;
+  font-weight:   500;
+  margin-right:  8px;
+}
+
+/* Severity colour variants */
+.sev-hi  { background: rgba(226,75,74,.18);  color: var(--redL);  border: 1px solid rgba(226,75,74,.35); }
+.sev-med { background: rgba(212,178,0,.18);  color: #FFF3A0;       border: 1px solid rgba(212,178,0,.35); }
+.sev-lo  { background: rgba(29,158,117,.18); color: var(--tealL); border: 1px solid rgba(29,158,117,.35); }
+
+/* Issue title — inline so it sits next to the severity pill */
+.sec-title {
+  display:     inline;
+  font-size:   12px;
+  color:       var(--text);
+  font-weight: 500;
+}
+
+.sec-desc {
+  font-size:  11px;
+  color:      var(--text2);
+  line-height: 1.75;
+  margin-top: 5px;
+}
+
+/* Mitigation note — prepends "✓ Fixed: " via CSS */
+.sec-fix {
+  font-size:  10px;
+  color:      var(--tealL);
+  margin-top: 4px;
+}
+
+.sec-fix::before {
+  content: "✓ Fixed: ";
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   26. UTILITY
+   Shared helpers used throughout.
+═══════════════════════════════════════════════════════════ */
+
+/* Forcibly hides an element — overrides any display value.
+   Applied by JS to hide tabs/panels that aren't active. */
+.hidden {
+  display: none !important;
+}
