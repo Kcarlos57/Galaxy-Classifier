@@ -1128,3 +1128,361 @@ body {
 .hidden {
   display: none !important;
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   27. CORS HELPER (shown when NASA CDN blocks pixel access)
+   Rendered inside the #analyze-status element by showCorsHelper().
+═══════════════════════════════════════════════════════════ */
+
+/* "Open image in new tab" link — underlined amber */
+.cors-link {
+  color:           var(--amber);
+  text-decoration: underline;
+  cursor:          pointer;
+}
+
+.cors-link:hover {
+  color: #fff;
+}
+
+/*
+ * Inline "Upload tab" button — looks like a small text link but triggers
+ * switchTab('upload') without navigating away. Using <button> rather than
+ * <a href="#"> keeps keyboard accessibility correct (Enter activates it).
+ */
+.cors-tab-btn {
+  background:      transparent;
+  border:          none;
+  color:           var(--amber);
+  font-family:     var(--mono);
+  font-size:       inherit;  /* matches the surrounding status text */
+  text-decoration: underline;
+  cursor:          pointer;
+  padding:         0;
+}
+
+.cors-tab-btn:hover {
+  color: #fff;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   28. METHODOLOGY MODAL
+   Two-column docs layout: sticky sidebar nav + scrollable content.
+   .meth-modal overrides the base .modal size/padding so the
+   wider two-column layout fits comfortably.
+═══════════════════════════════════════════════════════════ */
+
+/* Wider, taller modal override */
+.meth-modal {
+  max-width:  920px;
+  padding:    0;
+  max-height: 90vh;
+  display:    flex;
+  flex-direction: column;
+  overflow:   hidden;
+}
+
+/* Re-position close button for the padded header */
+.meth-modal .modal-close {
+  top:   16px;
+  right: 18px;
+}
+
+/* Title + subtitle in a padded header */
+.meth-modal h2,
+.meth-modal .modal-sub {
+  padding-left:  28px;
+  padding-right: 60px;
+}
+
+.meth-modal h2       { padding-top: 24px; }
+.meth-modal .modal-sub {
+  padding-bottom: 16px;
+  border-bottom:  1px solid var(--border);
+}
+
+/* Two-column layout */
+.meth-layout {
+  display:  flex;
+  flex:     1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Left sidebar navigation ── */
+.meth-nav {
+  width:       190px;
+  flex-shrink: 0;
+  overflow-y:  auto;
+  padding:     16px 0 24px;
+  border-right: 1px solid var(--border);
+  display:     flex;
+  flex-direction: column;
+}
+
+.meth-nav-divider {
+  font-size:      9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color:          var(--text3);
+  padding:        12px 16px 4px;
+  margin-top:     4px;
+}
+
+.meth-nav-link {
+  display:         block;
+  font-size:       11px;
+  color:           var(--text2);
+  padding:         5px 16px;
+  text-decoration: none;
+  cursor:          pointer;
+  transition:      color .15s, background .15s;
+  border-left:     2px solid transparent;
+}
+
+.meth-nav-link:hover {
+  color:      var(--text);
+  background: var(--bg3);
+}
+
+/* Active link — set by methScroll() in app.js when user clicks */
+.meth-nav-link.active {
+  color:        var(--amber);
+  border-color: var(--amber);
+  background:   rgba(239,159,39,.05);
+}
+
+/* ── Right scrollable content ── */
+.meth-body {
+  flex:       1;
+  overflow-y: auto;
+  padding:    24px 28px 48px;
+  min-width:  0;
+}
+
+/* Individual content section */
+.meth-section {
+  margin-bottom:  40px;
+  padding-bottom: 32px;
+  border-bottom:  1px solid var(--border);
+  scroll-margin-top: 8px;
+}
+
+.meth-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.meth-section h3 {
+  font-size:     14px;
+  font-weight:   500;
+  color:         var(--text);
+  margin-bottom: 12px;
+  letter-spacing: .02em;
+}
+
+.meth-section p {
+  font-size:     12px;
+  color:         var(--text2);
+  line-height:   1.85;
+  margin-bottom: 10px;
+}
+
+.meth-section p:last-child { margin-bottom: 0; }
+
+/* Amber step badge above headings */
+.meth-step-badge {
+  display:        inline-block;
+  font-size:      9px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color:          var(--amberD);
+  background:     var(--amberL);
+  border:         1px solid var(--amber2);
+  border-radius:  4px;
+  padding:        2px 8px;
+  margin-bottom:  8px;
+}
+
+/* Mathematical formula block */
+.meth-formula {
+  font-family:  'Courier New', Courier, monospace;
+  font-size:    12px;
+  color:        var(--amber);
+  background:   var(--bg3);
+  border:       1px solid var(--border2);
+  border-left:  3px solid var(--amber2);
+  border-radius: 6px;
+  padding:      10px 14px;
+  margin:       12px 0;
+  overflow-x:   auto;
+  line-height:  1.6;
+}
+
+/* Bullet list */
+.meth-list {
+  list-style: none;
+  margin:     10px 0;
+}
+
+.meth-list li {
+  font-size:    12px;
+  color:        var(--text2);
+  padding:      4px 0 4px 16px;
+  position:     relative;
+  line-height:  1.75;
+  border-bottom: 1px solid var(--border);
+}
+
+.meth-list li:last-child { border-bottom: none; }
+
+.meth-list li::before {
+  content:  "·";
+  color:    var(--amber);
+  position: absolute;
+  left:     4px;
+}
+
+/* Data table */
+.meth-table {
+  width:           100%;
+  border-collapse: collapse;
+  font-size:       11px;
+  margin:          12px 0;
+}
+
+.meth-table thead tr { background: var(--bg3); }
+
+.meth-table th {
+  text-align:     left;
+  padding:        6px 10px;
+  color:          var(--text3);
+  font-weight:    500;
+  letter-spacing: .06em;
+  font-size:      9px;
+  text-transform: uppercase;
+  border-bottom:  1px solid var(--border2);
+}
+
+.meth-table td {
+  padding:       6px 10px;
+  color:         var(--text2);
+  border-bottom: 1px solid var(--border);
+  line-height:   1.6;
+}
+
+.meth-table tr:last-child td { border-bottom: none; }
+
+.meth-table td:first-child {
+  color:       var(--amber);
+  white-space: nowrap;
+  font-family: 'Courier New', monospace;
+}
+
+/* Decision tree step rows */
+.meth-tree-step {
+  display:       flex;
+  gap:           14px;
+  align-items:   flex-start;
+  margin-bottom: 12px;
+  font-size:     12px;
+  color:         var(--text2);
+  line-height:   1.75;
+}
+
+.meth-tree-num {
+  flex-shrink:     0;
+  width:           24px;
+  height:          24px;
+  background:      rgba(239,159,39,.12);
+  border:          1px solid rgba(239,159,39,.35);
+  border-radius:   50%;
+  display:         flex;
+  align-items:     center;
+  justify-content: center;
+  font-size:       10px;
+  font-weight:     500;
+  color:           var(--amber);
+  margin-top:      2px;
+}
+
+/* Limitation items */
+.meth-lim-item {
+  margin-bottom: 14px;
+  padding:       12px 14px;
+  background:    var(--bg3);
+  border:        1px solid var(--border);
+  border-radius: 8px;
+}
+
+.meth-lim-item:last-child { margin-bottom: 0; }
+
+.meth-lim-title {
+  font-size:     12px;
+  font-weight:   500;
+  color:         var(--text);
+  margin-bottom: 6px;
+}
+
+.meth-lim-item p { margin-bottom: 0; }
+
+/* References list */
+.meth-refs-list { list-style: none; }
+
+.meth-refs-list li {
+  font-size:     11px;
+  color:         var(--text2);
+  line-height:   1.8;
+  padding:       8px 0 8px 14px;
+  border-bottom: 1px solid var(--border);
+  position:      relative;
+}
+
+.meth-refs-list li:last-child { border-bottom: none; }
+
+.meth-refs-list li::before {
+  content:  "—";
+  color:    var(--text3);
+  position: absolute;
+  left:     0;
+}
+
+.meth-refs-list em {
+  font-style: italic;
+  color:      var(--text);
+}
+
+/* Responsive: collapse sidebar on narrow screens */
+@media (max-width: 640px) {
+  .meth-layout       { flex-direction: column; }
+
+  .meth-nav {
+    width:         100%;
+    border-right:  none;
+    border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    flex-wrap:     wrap;
+    padding:       8px;
+    overflow-x:    auto;
+    overflow-y:    hidden;
+  }
+
+  .meth-nav-divider  { display: none; }
+
+  .meth-nav-link {
+    padding:             4px 10px;
+    white-space:         nowrap;
+    border-left:         none;
+    border-bottom:       2px solid transparent;
+    border-radius:       4px;
+  }
+
+  .meth-nav-link.active {
+    border-bottom-color: var(--amber);
+    background:          rgba(239,159,39,.08);
+  }
+
+  .meth-body { padding: 16px 16px 32px; }
+}

@@ -53,6 +53,7 @@
     </div>
 
     <div class="hdr-btns">
+      <button class="icon-btn" onclick="openModal('methodology')">📖 How It Works</button>
       <button class="icon-btn" onclick="openModal('security')">🔒 Security</button>
     </div>
   </div>
@@ -344,7 +345,351 @@
 
 
 <!-- ═══════════════════════════════════════════
-     SECURITY MODAL
+     METHODOLOGY MODAL
+     Full plain-language explanation of the pixel analysis pipeline.
+     Two-column layout: sticky sidebar navigation on the left,
+     scrollable content sections on the right.
+     Opened by the 📖 How It Works button in the header.
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-methodology" role="dialog" aria-modal="true" aria-label="How the classifier works">
+  <div class="modal meth-modal">
+    <button class="modal-close" onclick="closeModal('methodology')" aria-label="Close">✕ Close</button>
+
+    <h2>📖 How It Works</h2>
+    <div class="modal-sub">
+      A plain-language guide to the pixel analysis pipeline — what each step measures, why it matters, and how the final classification is reached.
+    </div>
+
+    <div class="meth-layout">
+
+      <!-- ── Sticky sidebar: section links ── -->
+      <nav class="meth-nav" aria-label="Section navigation">
+        <a href="#meth-intro"      class="meth-nav-link" onclick="methScroll('meth-intro')">Overview</a>
+        <a href="#meth-pixels"     class="meth-nav-link" onclick="methScroll('meth-pixels')">What is a pixel?</a>
+        <div class="meth-nav-divider">Pipeline steps</div>
+        <a href="#meth-s1"  class="meth-nav-link" onclick="methScroll('meth-s1')">1 · Grayscale</a>
+        <a href="#meth-s2"  class="meth-nav-link" onclick="methScroll('meth-s2')">2 · Contrast stretch</a>
+        <a href="#meth-s3"  class="meth-nav-link" onclick="methScroll('meth-s3')">3 · Centroid</a>
+        <a href="#meth-s4"  class="meth-nav-link" onclick="methScroll('meth-s4')">4 · Ellipse fit</a>
+        <a href="#meth-s5"  class="meth-nav-link" onclick="methScroll('meth-s5')">5 · Radial profile</a>
+        <a href="#meth-s6"  class="meth-nav-link" onclick="methScroll('meth-s6')">6 · Sérsic index</a>
+        <a href="#meth-s7"  class="meth-nav-link" onclick="methScroll('meth-s7')">7 · Concentration C</a>
+        <a href="#meth-s8"  class="meth-nav-link" onclick="methScroll('meth-s8')">8 · Asymmetry A</a>
+        <a href="#meth-s9"  class="meth-nav-link" onclick="methScroll('meth-s9')">9 · Clumpiness S</a>
+        <a href="#meth-s10" class="meth-nav-link" onclick="methScroll('meth-s10')">10 · Edge detection</a>
+        <a href="#meth-s11" class="meth-nav-link" onclick="methScroll('meth-s11')">11 · Bar detection</a>
+        <a href="#meth-s12" class="meth-nav-link" onclick="methScroll('meth-s12')">12 · Spiral arms</a>
+        <div class="meth-nav-divider">Results</div>
+        <a href="#meth-tree"  class="meth-nav-link" onclick="methScroll('meth-tree')">Decision tree</a>
+        <a href="#meth-conf"  class="meth-nav-link" onclick="methScroll('meth-conf')">Confidence score</a>
+        <a href="#meth-iso"   class="meth-nav-link" onclick="methScroll('meth-iso')">Isophote overlay</a>
+        <a href="#meth-lim"   class="meth-nav-link" onclick="methScroll('meth-lim')">Limitations</a>
+        <a href="#meth-refs"  class="meth-nav-link" onclick="methScroll('meth-refs')">References</a>
+      </nav>
+
+      <!-- ── Scrollable content ── -->
+      <div class="meth-body" id="meth-scroll-body">
+
+        <!-- ─ Overview ─ -->
+        <section id="meth-intro" class="meth-section">
+          <h3>What is this classifier trying to do?</h3>
+          <p>When astronomers look at a galaxy through a telescope, they can usually tell at a glance whether it looks like a smooth, featureless blob, a pinwheel with sweeping arms, or something messy and irregular. A century of observation produced the <strong>Hubble sequence</strong> — a classification scheme that sorts galaxies into families based on their visual shape, from smooth ellipticals on one end, through disk-shaped spirals in the middle, to chaotic irregulars on the other.</p>
+          <p>This classifier automates that process. It takes a photograph of a galaxy — downloaded from NASA's image library or generated from a sky survey — and, without any human input beyond selecting the image, measures a set of properties of the light in that image. It then uses those measurements to place the galaxy on the Hubble sequence, outputting both a broad category (e.g., "Spiral") and a detailed subtype (e.g., "Sbc").</p>
+          <p>The key insight is that the <em>shape of the light</em> in an image carries a surprising amount of information. How centrally concentrated is the brightness? Is the galaxy symmetrical, or does one side look different from the other? Is the light smooth and featureless, or patchy and clumped? Does the inner core look stretched in a way that suggests a bar? Do the edges form a swirling pattern suggesting spiral arms? Each of these questions can be answered mathematically by analysing the raw pixel values — entirely in your browser, with no data sent anywhere.</p>
+        </section>
+
+        <!-- ─ Pixels ─ -->
+        <section id="meth-pixels" class="meth-section">
+          <h3>A quick primer: what is a pixel value?</h3>
+          <p>Every digital image is a grid of tiny squares called <strong>pixels</strong>. Each pixel stores three numbers: the brightness of red light, green light, and blue light at that point. These numbers typically range from 0 (completely dark) to 255 (maximum brightness). A pixel with values (255, 255, 255) is pure white; (0, 0, 0) is pure black.</p>
+          <p>All of the analysis in this pipeline works by reading these numbers — sometimes for every single pixel in an image that might be hundreds of thousands of pixels large — and performing calculations on them. Modern browsers can do this very quickly using the HTML5 Canvas API, which is why this analysis runs entirely on your device.</p>
+        </section>
+
+        <!-- ─ Step 1 ─ -->
+        <section id="meth-s1" class="meth-section">
+          <div class="meth-step-badge">Step 1</div>
+          <h3>Grayscale conversion — turning colour into brightness</h3>
+          <p><strong>What it does:</strong> Collapses the three colour channels (red, green, blue) into a single brightness value at each pixel, called luminance.</p>
+          <p><strong>Why not just average the three channels?</strong> Averaging treats all three colours as equally important to perceived brightness — but they are not. The human eye is far more sensitive to green than to blue. The pipeline instead uses the <strong>Rec.709 weighting</strong> — an international broadcasting standard:</p>
+          <div class="meth-formula">Y = 0.2126 × R + 0.7152 × G + 0.0722 × B</div>
+          <p>Green contributes ~72% of perceived brightness, red ~21%, and blue only ~7%. This matters for galaxies because old, red stellar populations (found in bulges) are weighted differently from young, blue star-forming regions in spiral arms — and we want those differences preserved accurately in the analysis.</p>
+          <p><strong>What gets reported:</strong> The console logs the <strong>DN range</strong> (digital number — the pixel brightness scale), the <strong>mean brightness</strong>, and the <strong>standard deviation σ</strong>. These serve as a sanity check: if the mean is near 255, the image is likely overexposed; if σ is very small, contrast is low and measurements may be unreliable.</p>
+        </section>
+
+        <!-- ─ Step 2 ─ -->
+        <section id="meth-s2" class="meth-section">
+          <div class="meth-step-badge">Step 2</div>
+          <h3>Asinh contrast stretch — making faint features visible</h3>
+          <p><strong>The problem:</strong> A galaxy's nucleus can be hundreds or thousands of times brighter than its faint outer disk. Display one faithfully and the other disappears — either the nucleus washes out into a featureless white blob, or the outer halo vanishes into darkness.</p>
+          <p><strong>The solution:</strong> The pipeline applies the <strong>inverse hyperbolic sine (asinh)</strong> function as a contrast mapping. For faint pixels it behaves like a straight-line scale — preserving their relative differences. For bright pixels it compresses aggressively, preventing the nucleus from dominating. This is the same contrast mapping used by professional astronomical analysis tools such as SAOImage DS9.</p>
+          <p>The "softening parameter" <em>a</em> (set to one-fifth of the peak brightness) controls how sharply the transition between linear and compressed behaviour occurs. The practical result: you can simultaneously see the detailed structure of the bright nucleus, intermediate features like spiral arms, and faint outer structures like tidal tails that would otherwise be invisible.</p>
+          <p>This enriched view is what the <strong>Contrast Stretch</strong> and <strong>Isophote Overlay</strong> canvases display, and it gives the rest of the pipeline more signal to work with in the faint outer regions.</p>
+        </section>
+
+        <!-- ─ Step 3 ─ -->
+        <section id="meth-s3" class="meth-section">
+          <div class="meth-step-badge">Step 3</div>
+          <h3>Photometric centroid — finding the galaxy's true centre</h3>
+          <p><strong>Why not just use the centre of the image?</strong> The galaxy may not be perfectly centred in the frame — NASA archive images often have imprecise pointing, and sky survey cutouts may be offset from the true nucleus. If all subsequent measurements assume the image centre is the galaxy centre, they can be significantly wrong.</p>
+          <p><strong>How it works:</strong> The centroid is computed using the same idea as the centre of mass in physics. Imagine each pixel as a small weight, its heaviness proportional to its brightness. The centroid is the single point where the whole image would balance:</p>
+          <div class="meth-formula">x<sub>c</sub> = Σ(x · brightness) / Σ(brightness) &nbsp;&nbsp; y<sub>c</sub> = Σ(y · brightness) / Σ(brightness)</div>
+          <p>In practice this lies very close to the nucleus. If the centroid is more than 15% of the image width from the geometric centre of the frame, the console issues a warning that the galaxy may not fill the frame symmetrically and some measurements may be less reliable.</p>
+        </section>
+
+        <!-- ─ Step 4 ─ -->
+        <section id="meth-s4" class="meth-section">
+          <div class="meth-step-badge">Step 4</div>
+          <h3>Second-moment ellipse — measuring shape and orientation</h3>
+          <p><strong>The concept of moments:</strong> You already encountered the zeroth moment (total brightness) and first moment (centroid) above. <strong>Second moments</strong> capture the <em>spread and orientation</em> of the brightness distribution — how stretched the galaxy is and in which direction.</p>
+          <p>Think of it this way: if you drew a contour around the part of the galaxy above some brightness threshold (an <em>isophote</em>), that contour would roughly be an ellipse. The second moments define the shape and orientation of the best-fitting ellipse over the whole galaxy at once. Three quantities are computed:</p>
+          <ul class="meth-list">
+            <li><strong>M<sub>xx</sub></strong> — how spread out the brightness is horizontally</li>
+            <li><strong>M<sub>yy</sub></strong> — how spread out vertically</li>
+            <li><strong>M<sub>xy</sub></strong> — whether the spread is tilted (the covariance)</li>
+          </ul>
+          <p>Finding the eigenvalues of the 2×2 moment matrix gives the lengths of the best-fit ellipse's two axes. From these, the pipeline extracts:</p>
+          <ul class="meth-list">
+            <li><strong>Axis ratio b/a</strong>: 0 to 1. b/a = 1 means circular; near 0 means highly elongated.</li>
+            <li><strong>Ellipticity ε = 1 − b/a</strong>: 0 is circular; approaches 1 for a near-line shape.</li>
+            <li><strong>Position angle PA</strong>: direction of the major axis, measured in degrees CCW from vertical.</li>
+          </ul>
+          <p><strong>The E-class connection:</strong> For elliptical galaxies the apparent elongation defines the subtype. An E0 looks perfectly circular; an E7 is maximally elongated. The classification is simply E<sub>n</sub> = round(10 × ε), so the pipeline reads the E-class directly from the measured ellipticity.</p>
+        </section>
+
+        <!-- ─ Step 5 ─ -->
+        <section id="meth-s5" class="meth-section">
+          <div class="meth-step-badge">Step 5</div>
+          <h3>Radial brightness profile — how light falls off with distance</h3>
+          <p><strong>Why it matters:</strong> One of the most fundamental differences between galaxy types is <em>how</em> brightness drops off as you move away from the centre. An elliptical galaxy has a steep-then-gradual profile — extremely bright at the centre, falling steeply at first, then more gradually. A spiral galaxy's disk falls off much more gradually and uniformly. Measuring this profile is the foundation of the Sérsic fitting in Step 6.</p>
+          <p><strong>How it works:</strong> Imagine 64 concentric rings around the centroid, like a bullseye target. For each ring, the pipeline computes the average brightness of all pixels whose distance from the centroid falls within that ring's inner and outer edges. The result is 64 (radius, mean-brightness) pairs tracing the profile from the nucleus outward.</p>
+          <p>The outermost ring extends only to the largest circle that fits entirely inside the image, ensuring every ring samples a complete 360° arc and no bin is missing pixels from the corners. The profile is rendered as a live chart with a dashed vertical line marking r<sub>e</sub> (the half-light radius).</p>
+        </section>
+
+        <!-- ─ Step 6 ─ -->
+        <section id="meth-s6" class="meth-section">
+          <div class="meth-step-badge">Step 6</div>
+          <h3>Sérsic index — what shape is the brightness profile?</h3>
+          <p>In 1963, Argentine astronomer José Luis Sérsic showed that the surface brightness profiles of almost all galaxies can be described by a single family of curves, distinguished by one parameter — the <strong>Sérsic index n</strong>:</p>
+          <div class="meth-formula">I(r) = I<sub>e</sub> × exp(−b<sub>n</sub> × [(r / r<sub>e</sub>)<sup>1/n</sup> − 1])</div>
+          <p>Where r<sub>e</sub> is the half-light radius, I<sub>e</sub> is the brightness at that radius, and n controls the shape of the profile. What n means physically:</p>
+          <table class="meth-table">
+            <thead><tr><th>Sérsic n</th><th>Profile shape</th><th>Galaxy type</th></tr></thead>
+            <tbody>
+              <tr><td>≈ 0.5</td><td>Gaussian (bell curve)</td><td>Unusual — compact nucleus or star cluster</td></tr>
+              <tr><td>≈ 1.0</td><td>Exponential decline</td><td>Pure disk: late-type spirals</td></tr>
+              <tr><td>≈ 2–3</td><td>Intermediate curve</td><td>Mixed bulge and disk: early spirals, S0s</td></tr>
+              <tr><td>≈ 4.0</td><td>de Vaucouleurs law</td><td>Classical elliptical galaxies</td></tr>
+              <tr><td>&gt; 4</td><td>Super-concentrated</td><td>Brightest cluster galaxies (cD type)</td></tr>
+            </tbody>
+          </table>
+          <p>The n = 4 case — the <strong>de Vaucouleurs profile</strong>, identified by Gérard de Vaucouleurs in 1948 — is the signature of elliptical galaxies. The n = 1 exponential profile is characteristic of spiral galaxy disks.</p>
+          <p><strong>How the fitting works:</strong> The pipeline tests eight candidate values of n (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 6.0). For each candidate, it linearises the Sérsic equation: plotting ln(brightness) against radius<sup>1/n</sup> should produce a straight line for a true Sérsic profile with index n. The pipeline fits a line for each candidate and measures fit quality with R² (1 = perfect, 0 = no fit). The n with the highest R² wins.</p>
+        </section>
+
+        <!-- ─ Step 7 ─ -->
+        <section id="meth-s7" class="meth-section">
+          <div class="meth-step-badge">Step 7</div>
+          <h3>Concentration index C — how centrally peaked is the galaxy?</h3>
+          <p>Some galaxies pile almost all their light into a tiny bright core. Others spread it more evenly. This property — how centralised the brightness is — is called <strong>concentration</strong>, and it is one of the most reliable single-number discriminators between galaxy types.</p>
+          <div class="meth-formula">C = 5 × log<sub>10</sub>(r<sub>80</sub> / r<sub>20</sub>)</div>
+          <p>Where r<sub>20</sub> is the radius enclosing 20% of total light and r<sub>80</sub> encloses 80%. A large ratio means the 80% boundary is much farther out than the 20% boundary — most light is concentrated in the centre. The factor 5 and logarithm are conventional, chosen to give a convenient numerical range.</p>
+          <table class="meth-table">
+            <thead><tr><th>C value</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>&gt; 4.5</td><td>Extremely concentrated — giant or cD elliptical</td></tr>
+              <tr><td>3.5 – 4.5</td><td>Highly concentrated — normal elliptical, Sa spiral</td></tr>
+              <tr><td>2.5 – 3.5</td><td>Moderate — typical Sb–Sc spiral</td></tr>
+              <tr><td>1.5 – 2.5</td><td>Low — late spiral or irregular</td></tr>
+              <tr><td>&lt; 1.5</td><td>Very diffuse — dwarf irregular</td></tr>
+            </tbody>
+          </table>
+          <p>C is the first of the three <strong>CAS indices</strong> (Concentration, Asymmetry, Clumpiness), a widely used system introduced in a landmark 2003 paper by Christopher Conselice, designed to classify galaxies automatically from imaging data.</p>
+        </section>
+
+        <!-- ─ Step 8 ─ -->
+        <section id="meth-s8" class="meth-section">
+          <div class="meth-step-badge">Step 8</div>
+          <h3>Asymmetry index A — how symmetric is the galaxy?</h3>
+          <p>Elliptical galaxies are remarkably symmetrical — rotate one 180° and it looks almost identical. Spiral galaxies are broadly symmetrical but show some irregularity from arm structure and star formation. Merging galaxies and irregulars are often dramatically asymmetric.</p>
+          <p>The <strong>asymmetry index</strong> quantifies this by literally rotating the image 180° around the centroid and measuring how different the result is from the original:</p>
+          <div class="meth-formula">A = Σ|I(x,y) − I<sub>180</sub>(x,y)| / (2 × Σ|I(x,y)|)</div>
+          <p>If the galaxy is perfectly symmetrical every pixel matches its rotated counterpart exactly and A = 0. If one side looks completely different from the other, A approaches 1. In the decision tree, A is checked <em>first</em>: a galaxy in the middle of a collision can fool the concentration test, but its asymmetry reliably reveals its disturbed nature.</p>
+          <table class="meth-table">
+            <thead><tr><th>A value</th><th>Interpretation</th></tr></thead>
+            <tbody>
+              <tr><td>&lt; 0.10</td><td>Highly symmetric — smooth elliptical or regular disk</td></tr>
+              <tr><td>0.10 – 0.20</td><td>Mildly asymmetric — typical spiral</td></tr>
+              <tr><td>0.20 – 0.35</td><td>Moderately asymmetric — disturbed spiral or minor merger</td></tr>
+              <tr><td>&gt; 0.35</td><td>Highly asymmetric — irregular or major merger</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ─ Step 9 ─ -->
+        <section id="meth-s9" class="meth-section">
+          <div class="meth-step-badge">Step 9</div>
+          <h3>Clumpiness index S — is the light smooth or patchy?</h3>
+          <p>Bright clumps in a galaxy's disk are almost always regions of intense star formation — lit up by massive young stars and glowing gas clouds. A galaxy with high clumpiness is actively forming stars. Late-type spirals and irregulars tend to be clumpy; ellipticals and lenticulars (which have largely ceased star formation) are smooth.</p>
+          <p><strong>How it works:</strong> The pipeline creates two versions of the grayscale image: the original, and a <strong>box-blurred</strong> version (each pixel averaged with its neighbours, erasing compact clumps while preserving large-scale structure). The residual — original minus blurred — highlights high-frequency clumps. Only positive residuals are counted, preventing bright peaks from being double-counted via their surrounding dark troughs:</p>
+          <div class="meth-formula">S = Σ max(I − I<sub>blurred</sub>, 0) / Σ I &nbsp;&nbsp; (within 3 × r<sub>e</sub> of centre)</div>
+          <p>S near 0 indicates a smooth galaxy (elliptical or S0). S above ~0.15–0.20 indicates significant clumpiness and active star formation, typical of late spirals and irregulars. S is the third and final CAS index.</p>
+        </section>
+
+        <!-- ─ Step 10 ─ -->
+        <section id="meth-s10" class="meth-section">
+          <div class="meth-step-badge">Step 10</div>
+          <h3>Sobel edge detection — finding structure boundaries</h3>
+          <p>Edges in an image are places where brightness changes rapidly — boundaries between bright and dark regions. In a galaxy, edges correspond to the outlines of spiral arms, dust lanes, bar boundaries, and star-forming clumps. Detecting them produces a map of the galaxy's structural features: not what is bright, but <em>where transitions between bright and dark lie</em>.</p>
+          <p><strong>The Sobel operator</strong> compares the brightness of neighbouring pixels. For each pixel it calculates two gradients — how rapidly brightness changes left-to-right (G<sub>x</sub>) and top-to-bottom (G<sub>y</sub>) — using two 3×3 filter kernels. The combined edge strength is:</p>
+          <div class="meth-formula">|G| = √(G<sub>x</sub>² + G<sub>y</sub>²)</div>
+          <p>The resulting edge map is rendered in the analysis panel: spiral arms appear as bright curved lines, bar edges as straight lines, the outer disk as a bright ring. More importantly, this map is passed to the spiral arm indicator in Step 12.</p>
+        </section>
+
+        <!-- ─ Step 11 ─ -->
+        <section id="meth-s11" class="meth-section">
+          <div class="meth-step-badge">Step 11</div>
+          <h3>Bar detection — does the galaxy have a central bar?</h3>
+          <p>About two-thirds of spiral galaxies — including the Milky Way — have a <strong>bar</strong>: a roughly linear, elongated structure of stars running through the nucleus. Bars channel gas toward the centre, triggering star formation. On the Hubble sequence, barred galaxies are classified <strong>SB</strong> (e.g., SBb, SBc); unbarred spirals are simply <strong>S</strong> (Sa, Sb, Sc).</p>
+          <p><strong>The detection strategy:</strong> A bar makes the <em>inner region</em> of a galaxy more elongated than the outer disk. An unbarred spiral has roughly the same axis ratio throughout. The pipeline detects this by repeating the second-moment calculation separately for two zones:</p>
+          <ul class="meth-list">
+            <li><strong>Inner zone</strong>: pixels within 0.4 × r<sub>e</sub> of the centroid (most likely to contain the bar)</li>
+            <li><strong>Outer zone</strong>: pixels between 0.4 × r<sub>e</sub> and 1.5 × r<sub>e</sub> (the surrounding disk)</li>
+          </ul>
+          <p>Each zone produces its own axis ratio and position angle. The bar score combines two signals: <strong>inner elongation</strong> (is the core significantly non-circular?) and <strong>PA alignment</strong> (does the inner elongation point the same direction as the outer disk? A real bar should — if the two position angles differ by more than ~30°, the elongation is likely from inclination, not a bar).</p>
+          <div class="meth-formula">bar_score = inner_elongation × (1 − PA_difference / 30°)</div>
+          <p>A bar score above 0.22 classifies the galaxy as barred (SB). Above 0.35 is considered a strong, confident detection.</p>
+        </section>
+
+        <!-- ─ Step 12 ─ -->
+        <section id="meth-s12" class="meth-section">
+          <div class="meth-step-badge">Step 12</div>
+          <h3>Spiral arm indicator — detecting the pinwheel pattern</h3>
+          <p>Spiral arms are the most visually striking feature of a spiral galaxy, but also one of the hardest to detect automatically. They are not simply bright regions — they are <em>curved</em> bright regions in a specific geometric pattern. The pipeline uses a targeted approach: analysing the angular distribution of edges at a specific radius, and looking for the mathematical fingerprint of a two-armed spiral.</p>
+          <p><strong>Where to look:</strong> Arms are typically most prominent at roughly 0.8 × r<sub>e</sub> — not at the centre (dominated by the bulge) nor the extreme outer edge (where the disk fades). The pipeline samples the edge map in a narrow ring at this radius, dividing it into 36 angular sectors of 10° each, and summing edge strength within each sector.</p>
+          <p>Two complementary statistics are then computed:</p>
+          <ul class="meth-list">
+            <li><strong>Coefficient of Variation (CV)</strong> = σ / μ of the 36 sector values. If edge content is concentrated in just a few directions (as in spiral arms), CV is large. If it is uniform in all directions (as in a smooth elliptical), CV is near 0. A general measure of angular clumpiness.</li>
+            <li><strong>m=2 Fourier mode power</strong> — a more specific test for two-armed spirals. A Fourier decomposition of the angular pattern extracts the component that repeats exactly twice per revolution (i.e., has two peaks 180° apart). A grand-design two-armed spiral produces a strong m=2 component; multi-arm or asymmetric features produce weaker m=2 power but still contribute to CV.</li>
+          </ul>
+          <div class="meth-formula">Spiral score = 0.6 × CV + 0.4 × m=2 power</div>
+          <table class="meth-table">
+            <thead><tr><th>Spiral score</th><th>Interpretation</th></tr></thead>
+            <tbody>
+              <tr><td>&gt; 0.5</td><td>Strong grand-design two-armed spiral</td></tr>
+              <tr><td>0.35 – 0.5</td><td>Moderate spiral (multi-arm, flocculent, or inclined)</td></tr>
+              <tr><td>0.2 – 0.35</td><td>Weak or uncertain spiral signal</td></tr>
+              <tr><td>&lt; 0.2</td><td>No significant spiral signal</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ─ Decision tree ─ -->
+        <section id="meth-tree" class="meth-section">
+          <h3>The classification decision tree</h3>
+          <p>With all twelve measurements in hand, the pipeline runs a <strong>decision tree</strong> — a series of if/then tests in a specific priority order. The order matters: some conditions override others.</p>
+
+          <div class="meth-tree-step">
+            <div class="meth-tree-num">1</div>
+            <div>
+              <strong>Check for Irregular:</strong> If A &gt; 0.42 (very high asymmetry), or if A &gt; 0.32 <em>and</em> C &lt; 2.2 (moderately asymmetric and diffuse), the galaxy is classified as <strong>Irregular</strong>. This check comes first because an irregular galaxy can accidentally look like a disk galaxy in concentration — but it cannot fake low asymmetry. Catching irregulars first prevents them from being misclassified as spirals.
+            </div>
+          </div>
+          <div class="meth-tree-step">
+            <div class="meth-tree-num">2</div>
+            <div>
+              <strong>Check for Elliptical:</strong> If n ≥ 3.0 <em>and</em> C ≥ 3.0 <em>and</em> A &lt; 0.15 <em>and</em> S &lt; 0.2 <em>and</em> spiral score &lt; 0.35, the galaxy is classified as <strong>Elliptical</strong>. All five conditions must be met simultaneously — this is intentionally strict to avoid misclassifying a well-behaved early spiral. The E-class (E0–E7) is read from the ellipticity.
+            </div>
+          </div>
+          <div class="meth-tree-step">
+            <div class="meth-tree-num">3</div>
+            <div>
+              <strong>Check for Lenticular (S0):</strong> If n ≥ 2.0, C ≥ 2.5, A &lt; 0.18, spiral score &lt; 0.30, and bar score &lt; 0.25, the galaxy is classified as <strong>Lenticular</strong>. These are disk-shaped galaxies that have consumed or lost their star-forming gas — the disk shape of a spiral with the featureless smoothness of an elliptical.
+            </div>
+          </div>
+          <div class="meth-tree-step">
+            <div class="meth-tree-num">4</div>
+            <div>
+              <strong>Spiral or Barred Spiral:</strong> Every galaxy that reaches this step is treated as a disk galaxy. The bar score determines whether it is <strong>SB</strong> (barred) or <strong>S</strong> (unbarred). The spiral sub-type (a through d) is then assigned from concentration and Sérsic index:
+            </div>
+          </div>
+          <table class="meth-table" style="margin-top:10px;">
+            <thead><tr><th>C / n</th><th>Sub-type</th><th>Description</th></tr></thead>
+            <tbody>
+              <tr><td>C &gt; 3.3 or n &gt; 2.5</td><td>a</td><td>Tight arms; large central bulge</td></tr>
+              <tr><td>C &gt; 2.7 or n &gt; 1.8</td><td>ab</td><td>Transitional</td></tr>
+              <tr><td>C &gt; 2.2 or n &gt; 1.2</td><td>b</td><td>Intermediate — the most "typical" spiral</td></tr>
+              <tr><td>C &gt; 1.8 or n &gt; 0.9</td><td>bc</td><td>Transitional</td></tr>
+              <tr><td>C &gt; 1.4</td><td>c</td><td>Open, loosely wound arms; small bulge</td></tr>
+              <tr><td>Otherwise</td><td>d</td><td>Very open arms; almost no bulge</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ─ Confidence ─ -->
+        <section id="meth-conf" class="meth-section">
+          <h3>Confidence score</h3>
+          <p>Each branch of the decision tree computes a <strong>confidence percentage</strong> alongside the classification. This reflects how strongly the measured values support the chosen class — essentially, how far the metrics are from the decision boundaries.</p>
+          <p>A galaxy with a Sérsic n of 5, a C of 4.8, and an A of 0.04 will score 90–95% as an elliptical: every measurement strongly and consistently points the same way. A galaxy that just barely qualifies as a spiral over a lenticular will score 50–65%: the measurements are compatible with the classification but not decisive.</p>
+          <p>The confidence score is <em>not</em> a probability calibrated against a large labelled dataset. It is an internal self-consistency measure: 90% means all measurements strongly agree; 50% means the galaxy is near a classification boundary. Treat low-confidence results as a cue to inspect the isophote overlay and console output directly.</p>
+        </section>
+
+        <!-- ─ Isophote overlay ─ -->
+        <section id="meth-iso" class="meth-section">
+          <h3>The isophote overlay</h3>
+          <p>The <strong>Isophote Overlay</strong> canvas is a visual summary of the shape measurements from Steps 3–5 and 7. It draws the asinh-stretched galaxy as a background and overlays three concentric ellipses, all with the same axis ratio and position angle computed from the second-moment fit:</p>
+          <ul class="meth-list">
+            <li><strong style="color:#B5D4F4;">r₂₀ in blue</strong> — the ellipse enclosing 20% of total light, tracing the bright inner core</li>
+            <li><strong style="color:#EF9F27;">r<sub>e</sub> in amber</strong> — the half-light ellipse, the characteristic scale of the galaxy</li>
+            <li><strong style="color:#9FE1CB;">r₈₀ in teal</strong> — the ellipse enclosing 80% of total light, tracing the outer disk</li>
+          </ul>
+          <p>The centroid is marked with a crosshair and the major axis direction by a dashed line. These overlays let you immediately verify whether the measurements are sensible: if the ellipses are centred on the nucleus and aligned with the visible elongation, the measurements are reliable. If they are off-centre, misaligned, or wildly over-sized, something has gone wrong — perhaps a companion galaxy or a bright foreground star is biasing the centroid.</p>
+        </section>
+
+        <!-- ─ Limitations ─ -->
+        <section id="meth-lim" class="meth-section">
+          <h3>Known limitations</h3>
+          <div class="meth-lim-item">
+            <div class="meth-lim-title">Single-band imaging</div>
+            <p>This classifier works on one photograph. Galaxies look quite different depending on what kind of light you photograph them in. In ultraviolet (which traces young, hot stars), a spiral appears clumpy and asymmetric. In near-infrared (which traces old stellar mass), the same galaxy appears smoother and more regular. The classification produced is "morphology at the wavelength of this image," not a universal Hubble type. For most optical photographs — the typical case for NASA archive images — the result is a reasonable approximation of the standard visual Hubble type.</p>
+          </div>
+          <div class="meth-lim-item">
+            <div class="meth-lim-title">Inclination effects</div>
+            <p>We see most galaxies from a random angle. An edge-on spiral appears as a thin line — its measured ellipticity is very high, the bar detector may fire spuriously (the disk as a whole looks elongated), and the spiral indicator finds little arm signal (because the arms are seen edge-on, not face-on). An edge-on Sc spiral might be classified as S0 or even irregular in extreme cases. The pipeline does not correct for inclination.</p>
+          </div>
+          <div class="meth-lim-item">
+            <div class="meth-lim-title">Image resolution</div>
+            <p>The measurements rely on resolving the galaxy's structure into many pixels. If the galaxy subtends fewer than about 50 pixels across — which can happen with distant galaxies or small thumbnails — the radial profile, bar detector, and spiral indicator all lose reliability. Larger image variants produce significantly better results than thumbnails.</p>
+          </div>
+          <div class="meth-lim-item">
+            <div class="meth-lim-title">Background light</div>
+            <p>If the image has an unsubracted sky background (common with JPEG images from consumer-facing archives), the background artificially adds flux to the outer annuli of the radial profile. This biases the Sérsic index and concentration index toward lower values, potentially pushing an early-type galaxy toward an intermediate or late-type classification.</p>
+          </div>
+          <div class="meth-lim-item">
+            <div class="meth-lim-title">Companion galaxies and foreground stars</div>
+            <p>A second galaxy or bright foreground star within the frame will increase both the asymmetry and clumpiness indices, potentially triggering an irregular classification for a well-behaved spiral. Professional surveys mask such interlopers before analysis; this pipeline does not perform automatic masking.</p>
+          </div>
+        </section>
+
+        <!-- ─ References ─ -->
+        <section id="meth-refs" class="meth-section">
+          <h3>References</h3>
+          <ul class="meth-refs-list">
+            <li>Conselice, C. J. (2003). "The Relationship between Stellar Light Distributions of Galaxies and Their Formation Histories." <em>The Astrophysical Journal Supplement Series</em>, 147, 1–28.</li>
+            <li>de Vaucouleurs, G. (1948). "Recherches sur les Nébuleuses Extragalactiques." <em>Annales d'Astrophysique</em>, 11, 247–287.</li>
+            <li>Sérsic, J. L. (1963). "Influence of the atmospheric and instrumental dispersion on the brightness distribution in a galaxy." <em>Boletin de la Asociacion Argentina de Astronomia</em>, 6, 41–43.</li>
+            <li>Abraham, R. G., van den Bergh, S., &amp; Nair, P. (2003). "A New Approach to Galaxy Morphology." <em>The Astrophysical Journal</em>, 588, 218–229.</li>
+            <li>Lotz, J. M., Primack, J., &amp; Madau, P. (2004). "A New Nonparametric Approach to Galaxy Morphological Classification." <em>The Astronomical Journal</em>, 128, 163–182.</li>
+            <li>Hubble, E. P. (1926). "Extragalactic nebulae." <em>The Astrophysical Journal</em>, 64, 321–369.</li>
+          </ul>
+        </section>
+
+      </div><!-- /meth-body -->
+    </div><!-- /meth-layout -->
+  </div><!-- /modal -->
+</div><!-- /modal-overlay #modal-methodology -->
+
+
+
      Opened by the 🔒 button in the header.
      Documents the security posture of this app and mitigations applied.
      Closed by the ✕ button, clicking the overlay backdrop, or pressing Escape.

@@ -193,6 +193,28 @@ function closeModal(id) {
   document.body.style.overflow = '';
 }
 
+/**
+ * Scroll to a methodology section and update the active nav link.
+ * Called by onclick attributes on .meth-nav-link elements.
+ * Uses the .meth-body scroll container rather than the page scroll,
+ * since the modal content area scrolls independently.
+ *
+ * @param {string} sectionId - The id of the target <section> element.
+ */
+function methScroll(sectionId) {
+  const target    = document.getElementById(sectionId);
+  const container = document.getElementById('meth-scroll-body');
+  if (!target || !container) return;
+
+  // Scroll the content pane so the section is at the top
+  container.scrollTo({ top: target.offsetTop - 8, behavior: 'smooth' });
+
+  // Update active nav link highlight
+  document.querySelectorAll('.meth-nav-link').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('onclick')?.includes(sectionId));
+  });
+}
+
 // Close any open modal when user clicks the dark overlay backdrop
 document.querySelectorAll('.modal-overlay').forEach(el => {
   el.addEventListener('click', e => {
@@ -329,6 +351,64 @@ function showStatus(id, msg, isErr) {
  */
 function hideStatus(id) {
   document.getElementById(id).style.display = 'none';
+}
+
+/**
+ * Show a CORS-error helper in the #analyze-status area.
+ *
+ * Why this happens:
+ *   NASA's image CDN (images-assets.nasa.gov) does not send
+ *   Access-Control-Allow-Origin headers on all image files.
+ *   Without those headers the browser refuses to let JavaScript
+ *   read pixel values even though the image displays fine visually.
+ *   fetch() → blob and img + crossOrigin both fail for the same reason.
+ *
+ * Solution offered here:
+ *   Open the image in a new tab → right-click → Save Image As →
+ *   drag the saved file onto the Upload tab.
+ *   Uploaded local files bypass all remote CORS restrictions entirely.
+ *
+ * @param {string} imgUrl - The blocked remote image URL.
+ */
+function showCorsHelper(imgUrl) {
+  const el = document.getElementById('analyze-status');
+  el.className     = 'status err';
+  el.style.display = 'block';
+
+  // Build the helper UI with DOM methods — imgUrl comes from TRUSTED_DOMAINS
+  // so it is safe to use in href, but we still avoid innerHTML for the text nodes.
+  el.innerHTML = ''; // clear any previous content
+
+  const icon = document.createTextNode('⚠ ');
+  el.appendChild(icon);
+
+  const msg = document.createElement('span');
+  msg.textContent = "NASA's CDN blocked pixel access for this image (CORS restriction). ";
+  el.appendChild(msg);
+
+  // "Open image" link — opens in new tab so user can Save As
+  const link = document.createElement('a');
+  link.href        = imgUrl;   // validated against TRUSTED_DOMAINS before we get here
+  link.target      = '_blank';
+  link.rel         = 'noopener noreferrer';
+  link.textContent = 'Open image in new tab';
+  link.className   = 'cors-link';
+  el.appendChild(link);
+
+  const msg2 = document.createElement('span');
+  msg2.textContent = ' → right-click → Save Image As → drag the file onto the ';
+  el.appendChild(msg2);
+
+  // "Upload tab" button that switches to the upload tab
+  const tabBtn = document.createElement('button');
+  tabBtn.textContent = 'Upload tab';
+  tabBtn.className   = 'cors-tab-btn';
+  tabBtn.onclick     = () => switchTab('upload');
+  el.appendChild(tabBtn);
+
+  const msg3 = document.createElement('span');
+  msg3.textContent = ' to run analysis.';
+  el.appendChild(msg3);
 }
 
 
@@ -739,13 +819,10 @@ async function setSelectedImage(url, title, isDataUrl = false) {
     document.getElementById('px-btn').disabled = false;
 
   } catch (e) {
-    // CORS taint: the image loaded visually but the browser blocked canvas.getImageData()
-    // because the server didn't send Access-Control-Allow-Origin headers.
-    showStatus(
-      'analyze-status',
-      '⚠ Could not read pixel data (CORS restriction). Try uploading the file directly via the Upload tab.',
-      true
-    );
+    // All three pixel-read attempts failed.
+    // The image is still visible in the preview (the <img> element loads fine),
+    // but getImageData() is blocked. Offer a one-click save → re-upload workflow.
+    showCorsHelper(url);
     document.getElementById('px-btn').disabled = true;
   }
 
@@ -756,18 +833,67 @@ async function setSelectedImage(url, title, isDataUrl = false) {
  * Draw an image onto an off-screen canvas and extract its pixel data.
  * Returns a promise resolving to { imgData, b64, w, h }.
  *
- * Throws if:
- *   - The image fails to load (network error, 404, etc.)
- *   - The canvas is tainted (CORS policy blocks getImageData)
+ * Three-attempt strategy for remote URLs:
+ *
+ *   Attempt 1 — fetch() → Blob → blob: URL → canvas
+ *     fetch() retrieves the raw bytes. We create a blob: URL from the response
+ *     which the browser treats as same-origin, so canvas.getImageData() is never
+ *     tainted even if the server has no CORS headers. This is the primary path
+ *     for NASA images because images-assets.nasa.gov does not consistently send
+ *     Access-Control-Allow-Origin headers on all image variants.
+ *
+ *   Attempt 2 — img with crossOrigin="anonymous" → canvas
+ *     Falls back here only if fetch() itself fails (network error, strict
+ *     server-side fetch blocking, etc.). Works when the CDN does send CORS headers.
+ *
+ *   Attempt 3 — throws, caller shows download UI
+ *     If both attempts fail the promise rejects and setSelectedImage() renders
+ *     a "Save & Re-upload" helper so the user can download the file and drag it
+ *     to the Upload tab, bypassing all remote-image restrictions entirely.
  *
  * @param {string}  url       - Image URL or data: URI.
- * @param {boolean} isDataUrl - If false, sets crossOrigin="anonymous".
+ * @param {boolean} isDataUrl - If true, skips both remote attempts.
  * @returns {Promise<{imgData: ImageData, b64: string, w: number, h: number}>}
  */
-function loadImageData(url, isDataUrl) {
+async function loadImageData(url, isDataUrl) {
+  // ── Data URL / local file: draw directly, never tainted ──────────────────
+  if (isDataUrl) {
+    return loadFromSrc(url, false);
+  }
+
+  // ── Attempt 1: fetch → blob: URL ─────────────────────────────────────────
+  // A blob: URL is same-origin so getImageData() is always allowed.
+  try {
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob    = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    try {
+      return await loadFromSrc(blobUrl, false);
+    } finally {
+      URL.revokeObjectURL(blobUrl); // free memory whether we succeed or not
+    }
+  } catch (_) {
+    // fetch() failed (no CORS headers, network error, etc.) — try img fallback
+  }
+
+  // ── Attempt 2: img element with crossOrigin="anonymous" ──────────────────
+  // Works when the server sends Access-Control-Allow-Origin.
+  return loadFromSrc(url, true /* add crossOrigin="anonymous" */);
+}
+
+/**
+ * Internal helper: draw a URL or blob: URL into an off-screen canvas
+ * and return the pixel data. Rejects if the canvas is tainted.
+ *
+ * @param {string}  src            - Image src (URL, blob: URL, or data: URI).
+ * @param {boolean} setCrossOrigin - Whether to set crossOrigin="anonymous".
+ * @returns {Promise<{imgData, b64, w, h}>}
+ */
+function loadFromSrc(src, setCrossOrigin) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    if (!isDataUrl) img.crossOrigin = 'anonymous'; // request CORS headers from server
+    if (setCrossOrigin) img.crossOrigin = 'anonymous';
 
     img.onload = () => {
       const w = img.naturalWidth;
@@ -780,16 +906,16 @@ function loadImageData(url, isDataUrl) {
       ctx.drawImage(img, 0, 0);
 
       try {
-        const imgData = ctx.getImageData(0, 0, w, h); // throws on tainted canvas
+        const imgData = ctx.getImageData(0, 0, w, h); // throws if canvas is tainted
         const b64     = cv.toDataURL('image/jpeg', 0.92).split(',')[1];
         resolve({ imgData, b64, w, h });
       } catch (e) {
-        reject(e); // CORS taint
+        reject(e);
       }
     };
 
     img.onerror = () => reject(new Error('Image failed to load'));
-    img.src = url;
+    img.src = src;
   });
 }
 
