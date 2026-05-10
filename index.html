@@ -13,11 +13,15 @@
     or exfiltrating data to unknown servers.
 
     • default-src 'self' 'unsafe-inline'  — only inline styles/scripts, no external JS libs
-    • img-src                             — images allowed from NASA CDN and CDS sky surveys only
-    • connect-src                         — network calls restricted to the three astronomy APIs
+    • style-src                           — allows Google Fonts stylesheet
+    • font-src                            — allows Google Fonts binary files
+    • img-src                             — images from NASA CDN and CDS sky surveys only
+    • connect-src                         — network calls restricted to astronomy APIs only
   -->
   <meta http-equiv="Content-Security-Policy"
     content="default-src 'self' 'unsafe-inline';
+             style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+             font-src https://fonts.gstatic.com;
              img-src 'self' data: blob:
                https://images-assets.nasa.gov
                https://alasky.cds.unistra.fr
@@ -25,8 +29,14 @@
              connect-src
                https://images-api.nasa.gov
                https://ned.ipac.caltech.edu
+               https://simbad.cds.unistra.fr
                https://alasky.cds.unistra.fr
                https://alaskybis.cds.unistra.fr;">
+
+  <!-- Google Fonts: Inter for UI prose, IBM Plex Mono for console/code/data -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
 </head>

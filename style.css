@@ -76,8 +76,11 @@
   --border:  rgba(255,255,255,.07);  /* subtle border       */
   --border2: rgba(255,255,255,.13);  /* slightly more visible */
 
-  /* Typography */
-  --mono: 'Courier New', Courier, monospace;
+  /* Typography
+     --mono: monospace used for console, data values, buttons, inputs
+     --sans: proportional sans-serif used for prose (modal body, descriptions) */
+  --mono: 'IBM Plex Mono', 'Courier New', Courier, monospace;
+  --sans: 'Inter', system-ui, -apple-system, sans-serif;
 }
 
 
@@ -1065,6 +1068,8 @@ body {
   font-size:     11px;
   color:         var(--text3);
   margin-bottom: 20px;
+  font-family:   var(--sans);
+  line-height:   1.6;
 }
 
 /* Individual audit item card */
@@ -1100,10 +1105,11 @@ body {
 }
 
 .sec-desc {
-  font-size:  11px;
-  color:      var(--text2);
+  font-size:   11px;
+  color:       var(--text2);
   line-height: 1.75;
-  margin-top: 5px;
+  margin-top:  5px;
+  font-family: var(--sans);
 }
 
 /* Mitigation note — prepends "✓ Fixed: " via CSS */
@@ -1135,35 +1141,51 @@ body {
    Rendered inside the #analyze-status element by showCorsHelper().
 ═══════════════════════════════════════════════════════════ */
 
-/* "Open image in new tab" link — underlined amber */
-.cors-link {
-  color:           var(--amber);
-  text-decoration: underline;
-  cursor:          pointer;
+/* Container for the CORS error + action button */
+.cors-helper {
+  display:     flex;
+  align-items: flex-start;
+  gap:         12px;
+  flex-wrap:   wrap;
 }
 
-.cors-link:hover {
-  color: #fff;
+.cors-helper-msg {
+  font-size:  12px;
+  color:      var(--text2);
+  flex:       1;
+  min-width:  180px;
+  line-height: 1.6;
+  font-family: var(--sans);
 }
 
 /*
- * Inline "Upload tab" button — looks like a small text link but triggers
- * switchTab('upload') without navigating away. Using <button> rather than
- * <a href="#"> keeps keyboard accessibility correct (Enter activates it).
+ * Single action button that attempts to fetch → load, or triggers
+ * a browser download and switches to Upload tab as fallback.
+ * Styled as a full amber primary button so it's clearly actionable.
  */
-.cors-tab-btn {
-  background:      transparent;
-  border:          none;
-  color:           var(--amber);
-  font-family:     var(--mono);
-  font-size:       inherit;  /* matches the surrounding status text */
-  text-decoration: underline;
-  cursor:          pointer;
-  padding:         0;
+.cors-fetch-btn {
+  background:     rgba(239,159,39,.1);
+  border:         1px solid var(--amber2);
+  color:          var(--amber);
+  font-family:    var(--mono);
+  font-size:      11px;
+  letter-spacing: .05em;
+  padding:        8px 16px;
+  border-radius:  7px;
+  cursor:         pointer;
+  transition:     background .18s, border-color .18s;
+  white-space:    nowrap;
+  flex-shrink:    0;
 }
 
-.cors-tab-btn:hover {
-  color: #fff;
+.cors-fetch-btn:hover:not(:disabled) {
+  background:   rgba(239,159,39,.18);
+  border-color: var(--amber);
+}
+
+.cors-fetch-btn:disabled {
+  opacity: .45;
+  cursor:  not-allowed;
 }
 
 
@@ -1288,6 +1310,7 @@ body {
   color:         var(--text2);
   line-height:   1.85;
   margin-bottom: 10px;
+  font-family:   var(--sans);
 }
 
 .meth-section p:last-child { margin-bottom: 0; }
@@ -1334,6 +1357,7 @@ body {
   position:     relative;
   line-height:  1.75;
   border-bottom: 1px solid var(--border);
+  font-family:  var(--sans);
 }
 
 .meth-list li:last-child { border-bottom: none; }
@@ -1371,6 +1395,7 @@ body {
   color:         var(--text2);
   border-bottom: 1px solid var(--border);
   line-height:   1.6;
+  font-family:   var(--sans);
 }
 
 .meth-table tr:last-child td { border-bottom: none; }
@@ -1390,6 +1415,7 @@ body {
   font-size:     12px;
   color:         var(--text2);
   line-height:   1.75;
+  font-family:   var(--sans);
 }
 
 .meth-tree-num {
@@ -1438,6 +1464,7 @@ body {
   padding:       8px 0 8px 14px;
   border-bottom: 1px solid var(--border);
   position:      relative;
+  font-family:   var(--sans);
 }
 
 .meth-refs-list li:last-child { border-bottom: none; }

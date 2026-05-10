@@ -81,6 +81,9 @@ const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
  * NASA image CDN:      images-assets.nasa.gov
  * CDS primary mirror:  alasky.cds.unistra.fr
  * CDS backup mirror:   alaskybis.cds.unistra.fr
+ *
+ * Note: SIMBAD (simbad.cds.unistra.fr) is used for catalog lookups only
+ * (JSON, no pixel data) and does not need to be in this image allowlist.
  */
 const TRUSTED_DOMAINS = [
   'https://images-assets.nasa.gov/',
@@ -354,61 +357,109 @@ function hideStatus(id) {
 }
 
 /**
- * Show a CORS-error helper in the #analyze-status area.
+ * Show a CORS-error helper in the #analyze-status area with a single
+ * action button. Two-phase attempt:
  *
- * Why this happens:
- *   NASA's image CDN (images-assets.nasa.gov) does not send
- *   Access-Control-Allow-Origin headers on all image files.
- *   Without those headers the browser refuses to let JavaScript
- *   read pixel values even though the image displays fine visually.
- *   fetch() → blob and img + crossOrigin both fail for the same reason.
+ *   Phase 1 — Re-fetch as blob → synthetic File → handleFile()
+ *     Tries fetch() one more time. If the request succeeds (CORS headers
+ *     present on retry, or the previous failure was transient), the blob
+ *     is wrapped in a File object and fed directly into handleFile(),
+ *     which processes it exactly like a manual upload with no user steps.
  *
- * Solution offered here:
- *   Open the image in a new tab → right-click → Save Image As →
- *   drag the saved file onto the Upload tab.
- *   Uploaded local files bypass all remote CORS restrictions entirely.
+ *   Phase 2 — Trigger browser download → auto-switch to Upload tab
+ *     If fetch() is still blocked (no CORS headers), we create a hidden
+ *     <a download> link and click it programmatically. The browser saves
+ *     the file (it can download images even without CORS — CORS only blocks
+ *     JavaScript from reading the bytes). We then switch to the Upload tab
+ *     so the user only needs to drag the downloaded file to the drop zone.
  *
- * @param {string} imgUrl - The blocked remote image URL.
+ * @param {string} imgUrl - The blocked remote image URL (from TRUSTED_DOMAINS).
  */
 function showCorsHelper(imgUrl) {
   const el = document.getElementById('analyze-status');
   el.className     = 'status err';
   el.style.display = 'block';
+  el.innerHTML     = '';
 
-  // Build the helper UI with DOM methods — imgUrl comes from TRUSTED_DOMAINS
-  // so it is safe to use in href, but we still avoid innerHTML for the text nodes.
-  el.innerHTML = ''; // clear any previous content
-
-  const icon = document.createTextNode('⚠ ');
-  el.appendChild(icon);
+  const wrapper = document.createElement('div');
+  wrapper.className = 'cors-helper';
 
   const msg = document.createElement('span');
-  msg.textContent = "NASA's CDN blocked pixel access for this image (CORS restriction). ";
-  el.appendChild(msg);
+  msg.className   = 'cors-helper-msg';
+  msg.textContent = "⚠ NASA's CDN blocked direct pixel access for this image.";
+  wrapper.appendChild(msg);
 
-  // "Open image" link — opens in new tab so user can Save As
-  const link = document.createElement('a');
-  link.href        = imgUrl;   // validated against TRUSTED_DOMAINS before we get here
-  link.target      = '_blank';
-  link.rel         = 'noopener noreferrer';
-  link.textContent = 'Open image in new tab';
-  link.className   = 'cors-link';
-  el.appendChild(link);
+  const btn = document.createElement('button');
+  btn.id        = 'cors-fetch-btn';
+  btn.className = 'cors-fetch-btn';
+  btn.textContent = '⬇ Load image for analysis';
+  btn.addEventListener('click', () => fetchAndLoadImage(imgUrl));
+  wrapper.appendChild(btn);
 
-  const msg2 = document.createElement('span');
-  msg2.textContent = ' → right-click → Save Image As → drag the file onto the ';
-  el.appendChild(msg2);
+  el.appendChild(wrapper);
+}
 
-  // "Upload tab" button that switches to the upload tab
-  const tabBtn = document.createElement('button');
-  tabBtn.textContent = 'Upload tab';
-  tabBtn.className   = 'cors-tab-btn';
-  tabBtn.onclick     = () => switchTab('upload');
-  el.appendChild(tabBtn);
+/**
+ * Attempt to load a CORS-blocked image for pixel analysis.
+ * Called by the button rendered in showCorsHelper().
+ *
+ * @param {string} imgUrl - Remote image URL (validated against TRUSTED_DOMAINS).
+ */
+async function fetchAndLoadImage(imgUrl) {
+  const btn = document.getElementById('cors-fetch-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Fetching…'; }
 
-  const msg3 = document.createElement('span');
-  msg3.textContent = ' to run analysis.';
-  el.appendChild(msg3);
+  try {
+    // Phase 1: fetch() → blob → synthetic File → handleFile()
+    // Using mode:'cors' with credentials:'omit'. If the CDN has added or
+    // temporarily allows CORS, this will succeed and we get the raw bytes.
+    const res = await fetch(imgUrl, { mode: 'cors', credentials: 'omit' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+
+    // Derive a sane filename from the URL
+    const filename = decodeURIComponent(
+      imgUrl.split('/').pop().split('?')[0] || 'galaxy.jpg'
+    ).slice(0, 120);
+
+    // Wrap the blob as a File — handleFile() validates MIME and size then
+    // calls setSelectedImage(), which will be able to read pixels from a
+    // local blob with no CORS restrictions at all.
+    const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
+
+    hideStatus('analyze-status');
+    switchTab('upload');   // switch tab so the user sees context
+    handleFile(file);      // processes exactly like a manual upload
+
+  } catch (_) {
+    // Phase 2: fetch() still blocked — trigger a browser download instead.
+    // Browsers CAN download cross-origin images (that's how <img> works);
+    // the restriction is only on JavaScript reading the bytes.
+    if (btn) { btn.textContent = 'Downloading…'; }
+
+    const a = document.createElement('a');
+    a.href     = imgUrl;
+    a.download = decodeURIComponent(
+      imgUrl.split('/').pop().split('?')[0] || 'galaxy.jpg'
+    ).slice(0, 120);
+    a.rel = 'noopener noreferrer';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    // Switch to upload tab and show a clear next-step message
+    switchTab('upload');
+    const el = document.getElementById('analyze-status');
+    el.className     = 'status';
+    el.style.display = 'block';
+    el.innerHTML     = '';
+    const m = document.createElement('span');
+    m.className   = 'cors-helper-msg';
+    m.textContent = '⬇ Image downloading — drag it from your Downloads folder onto the drop zone above, or click the zone to browse.';
+    el.appendChild(m);
+
+    if (btn) { btn.disabled = false; btn.textContent = '⬇ Load image for analysis'; }
+  }
 }
 
 
@@ -571,12 +622,19 @@ async function selectNasaImage(el, thumbUrl, title, nasaId) {
 ═══════════════════════════════════════════════════════════ */
 
 /**
- * Look up a galaxy name in NED, display its catalog data,
- * then trigger hips2fits cutout loading if coordinates are available.
+ * Look up a galaxy name, display its catalog data, then trigger
+ * hips2fits cutout loading if coordinates are available.
+ *
+ * Strategy:
+ *   1. Try NED ObjectLookup (primary — richest data).
+ *   2. If NED fails with a network/CORS error ("Failed to fetch"),
+ *      silently fall back to SIMBAD TAP, which has reliable CORS headers.
+ *   3. If both fail, show a clear error.
+ *
  * Called by the Lookup button and Enter key in the name input.
  */
 async function nameLookup() {
-  const q   = document.getElementById('ned-q').value.trim().slice(0, 120);
+  const q = document.getElementById('ned-q').value.trim().slice(0, 120);
   if (!q) return;
 
   const btn = document.getElementById('ned-btn');
@@ -585,68 +643,131 @@ async function nameLookup() {
   document.getElementById('ned-result').classList.add('hidden');
   state.nedData = null;
 
+  // ── Attempt 1: NED ObjectLookup ──────────────────────────────────────────
+  let nedSuccess = false;
   try {
     const r = await fetch(
       `https://ned.ipac.caltech.edu/srs/ObjectLookup?name=${encodeURIComponent(q)}`,
-      { mode: 'cors' }
+      { mode: 'cors', credentials: 'omit' }
     );
+    if (!r.ok) throw new Error('NED HTTP ' + r.status);
     const j = await r.json();
 
-    // NED result codes:
-    //   0 — uninterpretable string
-    //   1 — ambiguous name (multiple candidates)
-    //   2 — name not found
-    //   3 — success
-    if (j.ResultCode !== 3) {
-      const msgs = {
-        0: 'Could not interpret as an object name.',
-        1: 'Ambiguous — be more specific.',
-        2: 'Not found in NED.',
-      };
-      throw new Error(msgs[j.ResultCode] || 'NED code ' + j.ResultCode);
+    // NED result codes: 0=uninterpretable, 1=ambiguous, 2=not found, 3=success
+    if (j.ResultCode === 3) {
+      const pref = j.Preferred;
+      const name = String(pref.Name  || q).slice(0, 100);
+      const ra   = typeof pref.Position?.RA    === 'number' ? pref.Position.RA    : null;
+      const dec  = typeof pref.Position?.Dec   === 'number' ? pref.Position.Dec   : null;
+      const z    = typeof pref.Redshift?.Value === 'number' ? pref.Redshift.Value : null;
+      const type = String(pref.ObjType?.Value  || '').slice(0, 20);
+
+      state.nedData = { name, ra, dec, z, type, source: 'NED' };
+      renderCatalogCard(name, ra, dec, z, type, 'NED');
+
+      if (ra != null && dec != null) await loadHipsCutouts(name, ra, dec);
+      hideStatus('ned-status');
+      nedSuccess = true;
+
+    } else if (j.ResultCode === 1) {
+      // Ambiguous — this is a definitive API answer, don't fall back to SIMBAD
+      throw new Error('Ambiguous name — try being more specific (e.g. "NGC 1300" instead of "NGC 13").');
+    } else if (j.ResultCode === 2) {
+      // Explicitly not found in NED — fall through to SIMBAD silently
+    } else {
+      throw new Error('NED returned code ' + j.ResultCode);
     }
 
-    const pref = j.Preferred;
-    const name = String(pref.Name  || q).slice(0, 100);
-    const ra   = typeof pref.Position?.RA    === 'number' ? pref.Position.RA    : null;
-    const dec  = typeof pref.Position?.Dec   === 'number' ? pref.Position.Dec   : null;
-    const z    = typeof pref.Redshift?.Value === 'number' ? pref.Redshift.Value : null;
-    const type = String(pref.ObjType?.Value  || '').slice(0, 20);
+  } catch (e) {
+    // If it was a deliberate user-facing error (ambiguous, parse fail), re-throw
+    if (e.message.startsWith('Ambiguous') || e.message.startsWith('NED returned')) {
+      showStatus('ned-status', '⚠ ' + esc(e.message.slice(0, 120)), true);
+      btn.disabled = false;
+      return;
+    }
+    // Otherwise (network/CORS failure, or not-found) fall through to SIMBAD
+  }
 
-    // Store for use in the NED comparison block of the results panel
-    state.nedData = { name, ra, dec, z, type };
+  if (nedSuccess) { btn.disabled = false; return; }
 
-    // Populate NED card using textContent (never innerHTML for API data)
-    document.getElementById('ned-name').textContent = name;
+  // ── Attempt 2: SIMBAD TAP fallback ───────────────────────────────────────
+  // SIMBAD (Centre de Données astronomiques de Strasbourg) has reliable CORS
+  // headers and covers all objects in NED's catalog and more.
+  showStatus('ned-status', '<span class="spinner"></span>NED unavailable — trying SIMBAD…');
+  try {
+    // Escape single quotes in the name to prevent ADQL injection
+    const safeName = q.replace(/'/g, "''");
+    const adql = `SELECT ra, dec, otype_txt FROM basic JOIN ident ON basic.oid = ident.oidref WHERE id = '${safeName}'`;
+    const url  = `https://simbad.cds.unistra.fr/simbad/sim-tap/sync` +
+                 `?REQUEST=doQuery&LANG=ADQL&FORMAT=json&QUERY=${encodeURIComponent(adql)}`;
 
-    const grid = document.getElementById('ned-fields');
-    grid.innerHTML = '';
-    [
-      ['RA (J2000)',  ra  != null ? ra.toFixed(6)  + '°' : '—'],
-      ['Dec (J2000)', dec != null ? dec.toFixed(6) + '°' : '—'],
-      ['Redshift z',  z   != null ? z.toFixed(5)         : '—'],
-      ['NED type',    type || '—'],
-    ].forEach(([l, v]) => {
-      const it = document.createElement('div');
-      const lb = document.createElement('div'); lb.className = 'ned-lbl'; lb.textContent = l;
-      const vl = document.createElement('div'); vl.className = 'ned-val'; vl.textContent = v;
-      it.appendChild(lb); it.appendChild(vl);
-      grid.appendChild(it);
-    });
+    const r = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (!r.ok) throw new Error('SIMBAD HTTP ' + r.status);
+    const j = await r.json();
 
-    document.getElementById('ned-result').classList.remove('hidden');
+    if (!j.data || j.data.length === 0) {
+      throw new Error(`"${q}" not found in NED or SIMBAD. Check the spelling — try catalog names like "NGC 1300" or "M 51".`);
+    }
 
-    // Load sky cutouts at the resolved coordinates
+    const [ra, dec, otype] = j.data[0];
+    const name = q; // SIMBAD doesn't return a canonical name in this query; use as entered
+    const type = String(otype || 'G').slice(0, 20);
+
+    state.nedData = { name, ra, dec, z: null, type, source: 'SIMBAD' };
+    renderCatalogCard(name, ra, dec, null, type, 'SIMBAD');
+
     if (ra != null && dec != null) await loadHipsCutouts(name, ra, dec);
-
     hideStatus('ned-status');
 
   } catch (e) {
-    const msg = e.message.length < 120 ? e.message : 'Lookup failed. Check name and try again.';
+    const msg = e.message.length < 160 ? e.message : 'Lookup failed. Check name and try again.';
     showStatus('ned-status', '⚠ ' + esc(msg), true);
   }
 
   btn.disabled = false;
+}
+
+/**
+ * Populate the NED/SIMBAD catalog card with resolved object data.
+ * Extracted from nameLookup() so both code paths share one renderer.
+ *
+ * @param {string}      name   - Object name.
+ * @param {number|null} ra     - Right ascension (decimal degrees).
+ * @param {number|null} dec    - Declination (decimal degrees).
+ * @param {number|null} z      - Redshift (null if unavailable from SIMBAD).
+ * @param {string}      type   - Object type code.
+ * @param {string}      source - 'NED' or 'SIMBAD' (shown as a badge).
+ */
+function renderCatalogCard(name, ra, dec, z, type, source) {
+  // Source badge — lets the user know which catalog answered
+  const sourceLabel = source === 'SIMBAD' ? 'SIMBAD (NED unavailable)' : 'NED';
+  document.getElementById('ned-name').textContent = name;
+
+  // Small source indicator appended after the name
+  const existing = document.getElementById('ned-source-badge');
+  if (existing) existing.remove();
+  const badge = document.createElement('span');
+  badge.id          = 'ned-source-badge';
+  badge.textContent = sourceLabel;
+  badge.style.cssText = 'font-size:9px;color:var(--text3);letter-spacing:.08em;margin-left:8px;';
+  document.getElementById('ned-name').appendChild(badge);
+
+  const grid = document.getElementById('ned-fields');
+  grid.innerHTML = '';
+  [
+    ['RA (J2000)',  ra  != null ? ra.toFixed(6)  + '°' : '—'],
+    ['Dec (J2000)', dec != null ? dec.toFixed(6) + '°' : '—'],
+    ['Redshift z',  z   != null ? z.toFixed(5)         : '—'],
+    ['Type',        type || '—'],
+  ].forEach(([l, v]) => {
+    const it = document.createElement('div');
+    const lb = document.createElement('div'); lb.className = 'ned-lbl'; lb.textContent = l;
+    const vl = document.createElement('div'); vl.className = 'ned-val'; vl.textContent = v;
+    it.appendChild(lb); it.appendChild(vl);
+    grid.appendChild(it);
+  });
+
+  document.getElementById('ned-result').classList.remove('hidden');
 }
 
 
