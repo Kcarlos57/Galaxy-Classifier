@@ -39,8 +39,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="blackhole-overrides.css">
+  <!-- Stylesheets — v= cache-buster forces GitHub Pages / CDN edge caches
+       to fetch the latest copy when these files change, rather than serving
+       a stale version. Bump the value whenever you edit the CSS. -->
+  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="blackhole-overrides.css?v=3">
 </head>
 <body>
 
@@ -880,9 +883,9 @@
             <li><strong>Inner zone</strong>: pixels within 0.4 × r<sub>e</sub> of the centroid (most likely to contain the bar)</li>
             <li><strong>Outer zone</strong>: pixels between 0.4 × r<sub>e</sub> and 1.5 × r<sub>e</sub> (the surrounding disk)</li>
           </ul>
-          <p>Each zone produces its own axis ratio and position angle. The bar score combines two signals: <strong>inner elongation</strong> (is the core significantly non-circular?) and <strong>PA alignment</strong> (does the inner elongation point the same direction as the outer disk? A real bar should — if the two position angles differ by more than ~30°, the elongation is likely from inclination, not a bar). The formula has two tiers:</p>
+          <p>Each zone produces its own axis ratio and position angle. The bar score combines two signals: <strong>inner elongation</strong> (is the core significantly non-circular?) and <strong>PA alignment</strong> (does the inner elongation point the same direction as the outer disk? A real bar should — if the two position angles differ by more than ~30°, the elongation is likely from inclination, not a bar). The formula uses two tiers:</p>
           <div class="meth-formula">if elongation &gt; 0.25 and PA_diff &lt; 30°: &nbsp; bar_score = elongation × (1 − PA_diff / 30°)<br>if elongation &gt; 0.20 and PA_diff &lt; 40°: &nbsp; bar_score = elongation × 0.5<br>otherwise: &nbsp; bar_score = 0</div>
-          <p style="margin-top:8px;font-size:14px;color:var(--text2);">The stronger tier applies when the core is distinctly elongated <em>and</em> well-aligned with the disk; the weaker tier catches marginal cases. The bar is flagged only when a threshold is met in either tier.</p>
+          <p style="margin-top:8px;font-size:14px;color:var(--text2);">The stronger tier fires when the core is distinctly elongated and well-aligned with the outer disk; the weaker tier catches marginal detections. Any score of 0 means neither threshold was met.</p>
           <p>A bar score above 0.22 classifies the galaxy as barred (SB). Above 0.35 is considered a strong, confident detection.</p>
         </section>
 
@@ -1101,9 +1104,9 @@
 </button>
 
 <!-- app.js loaded at end of body so the DOM is fully parsed before any JS runs -->
-<script src="app.js"></script>
+<script src="app.js?v=3"></script>
 
 <!-- black hole background renderer -->
-<script src="blackhole.js"></script>
+<script src="blackhole.js?v=3"></script>
 </body>
 </html>

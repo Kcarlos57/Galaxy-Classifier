@@ -252,44 +252,43 @@
 
         // Background parallax: very small reverse shift on top of the global
         // uv parallax → these galaxies barely move with the mouse.
-        // (uM is roughly in [-1, 1].)
-        #define BG_PARALLAX(amt) (lensed - uM * (amt))
-
+        // (uM is roughly in [-1, 1]. Inlined rather than using a #define
+        // macro because some WebGL preprocessors choke on function-like
+        // macros — this also makes the shader behave identically across
+        // browsers and GPU vendors.)
         // Hue spectrum across the deep field: blue, magenta, teal, gold,
         // violet, rose, amber, jade, peach and ice.
-        g += galaxy(BG_PARALLAX(0.018) + vec2(sin(td*0.7)*0.015, cos(td*0.9)*0.010),
+        g += galaxy((lensed - uM * 0.018) + vec2(sin(td*0.7)*0.015, cos(td*0.9)*0.010),
                     vec2(-0.72,  0.34), 0.20,  0.55, 0.45,
                     vec3(0.55, 0.75, 1.55), 1.3);
-        g += galaxy(BG_PARALLAX(0.012) + vec2(-sin(td*0.6)*0.012, cos(td*0.8)*0.014),
+        g += galaxy((lensed - uM * 0.012) + vec2(-sin(td*0.6)*0.012, cos(td*0.8)*0.014),
                     vec2( 0.70, -0.30), 0.22, -0.80, 0.40,
                     vec3(1.35, 0.55, 1.00), 2.7);
-        g += galaxy(BG_PARALLAX(0.024) + vec2(cos(td*0.5)*0.014, sin(td*1.1)*0.012),
+        g += galaxy((lensed - uM * 0.024) + vec2(cos(td*0.5)*0.014, sin(td*1.1)*0.012),
                     vec2(-0.58, -0.40), 0.16,  1.30, 0.55,
                     vec3(0.45, 1.20, 1.05), 4.1);
-        g += galaxy(BG_PARALLAX(0.010) + vec2(sin(td*1.1)*0.010, -cos(td*0.7)*0.014),
+        g += galaxy((lensed - uM * 0.010) + vec2(sin(td*1.1)*0.010, -cos(td*0.7)*0.014),
                     vec2( 0.60,  0.40), 0.18, -0.30, 0.42,
                     vec3(1.45, 1.00, 0.50), 5.5);
-        g += galaxy(BG_PARALLAX(0.020) + vec2(cos(td*0.9)*0.014, sin(td*0.6)*0.010),
+        g += galaxy((lensed - uM * 0.020) + vec2(cos(td*0.9)*0.014, sin(td*0.6)*0.010),
                     vec2(-0.25,  0.46), 0.12,  2.10, 0.30,
                     vec3(1.05, 0.60, 1.40), 6.9);
-        g += galaxy(BG_PARALLAX(0.014) + vec2(-cos(td*0.8)*0.012, sin(td*1.0)*0.014),
+        g += galaxy((lensed - uM * 0.014) + vec2(-cos(td*0.8)*0.012, sin(td*1.0)*0.014),
                     vec2( 0.30, -0.46), 0.13,  0.95, 0.50,
                     vec3(0.65, 0.90, 1.55), 8.2);
-        g += galaxy(BG_PARALLAX(0.026) + vec2(sin(td*0.5)*0.018, cos(td*0.5)*0.012),
+        g += galaxy((lensed - uM * 0.026) + vec2(sin(td*0.5)*0.018, cos(td*0.5)*0.012),
                     vec2(-0.85,  0.04), 0.11, -1.40, 0.65,
                     vec3(1.35, 0.75, 0.40), 9.4);
-        g += galaxy(BG_PARALLAX(0.008) + vec2(-sin(td*0.7)*0.014, cos(td*0.6)*0.012),
+        g += galaxy((lensed - uM * 0.008) + vec2(-sin(td*0.7)*0.014, cos(td*0.6)*0.012),
                     vec2( 0.85,  0.08), 0.12,  0.20, 0.48,
                     vec3(0.75, 1.30, 0.85), 10.7);
         // Small distant pair near the top/bottom edges
-        g += galaxy(BG_PARALLAX(0.030),
+        g += galaxy((lensed - uM * 0.030),
                     vec2( 0.05,  0.46), 0.09,  1.70, 0.35,
                     vec3(1.35, 0.80, 1.10), 12.1);
-        g += galaxy(BG_PARALLAX(0.028),
+        g += galaxy((lensed - uM * 0.028),
                     vec2(-0.10, -0.46), 0.10, -0.60, 0.40,
                     vec3(0.95, 1.05, 1.40), 13.8);
-
-        #undef BG_PARALLAX
 
         // Soft fade as galaxies approach the BH — keeps the lensed disk
         // visually dominant without hard-cutting them.
@@ -392,19 +391,17 @@
         float td = t * 0.018;
 
         // Strong forward parallax — these move WITH the mouse, opposite
-        // to the background galaxies' near-static behaviour.
-        #define FG_PARALLAX(amt) (uv + uM * (amt))
+        // to the background galaxies' near-static behaviour. Inlined for
+        // preprocessor-compatibility reasons (see step 2b above).
 
         // Two large translucent clouds pushed out to the edges, framing
         // the black hole rather than overlapping it.
-        fg += galaxy(FG_PARALLAX(0.110) + vec2(sin(td*0.8)*0.020, cos(td*0.9)*0.015),
+        fg += galaxy((uv + uM * 0.110) + vec2(sin(td*0.8)*0.020, cos(td*0.9)*0.015),
                      vec2( 0.95,  0.20), 0.42,  0.85, 0.55,
                      vec3(0.55, 0.80, 1.40), 20.5);
-        fg += galaxy(FG_PARALLAX(0.150) + vec2(-cos(td*0.7)*0.025, sin(td*1.0)*0.020),
+        fg += galaxy((uv + uM * 0.150) + vec2(-cos(td*0.7)*0.025, sin(td*1.0)*0.020),
                      vec2(-0.95, -0.22), 0.38, -1.10, 0.45,
                      vec3(1.30, 0.55, 1.05), 21.3);
-
-        #undef FG_PARALLAX
 
         // Translucent contribution — visible but doesn't overpower the BH
         col += fg * 0.55;
