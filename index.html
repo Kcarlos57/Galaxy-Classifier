@@ -45,10 +45,8 @@
 
   <!-- ═══════════════════════════════════════════
        HEADER
-       App title, subtitle, and the Security modal trigger.
   ═══════════════════════════════════════════ -->
   <div class="hdr">
-    <!-- Decorative galaxy SVG icon -->
     <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
       <circle cx="19" cy="19" r="15" stroke="#EF9F27" stroke-width="1"/>
       <ellipse cx="19" cy="19" rx="15" ry="5" stroke="#BA7517" stroke-width=".7" opacity=".65"/>
@@ -72,18 +70,13 @@
 
   <!-- ═══════════════════════════════════════════
        INPUT TABS
-       Three ways to get a galaxy image into the app:
-         1. Search NASA Image Library API
-         2. Look up a known object name via NED, then choose a hips2fits sky survey cutout
-         3. Upload a local image file directly
   ═══════════════════════════════════════════ -->
   <div class="tabs">
     <button class="tab active" onclick="switchTab('search')">Search NASA library</button>
-    <button class="tab"        onclick="switchTab('name')">Lookup by name</button>
     <button class="tab"        onclick="switchTab('upload')">Upload image</button>
   </div>
 
-  <!-- ── Tab 1: NASA Image Library search ── -->
+  <!-- Tab 1: NASA Image Library search -->
   <div id="tab-search">
     <div class="search-row">
       <input
@@ -96,14 +89,8 @@
       >
       <button class="btn btn-amber" onclick="nasaSearch()" id="nasa-btn">Search ↗</button>
     </div>
-
-    <!-- Status message (spinner while loading, error text on failure) -->
     <div class="status" id="nasa-status" role="status"></div>
-
-    <!-- Image result cards are injected here by nasaSearch() in app.js -->
     <div id="nasa-grid" class="results-grid"></div>
-
-    <!-- Pagination — only shown when results exceed 20 -->
     <div id="nasa-pager" class="pager hidden">
       <button class="btn btn-sm" id="nasa-prev" onclick="nasaPage(-1)">← Prev</button>
       <span class="pager-info" id="nasa-pager-info"></span>
@@ -111,46 +98,10 @@
     </div>
   </div>
 
-  <!-- ── Tab 2: NED object name lookup ── -->
-  <div id="tab-name" class="hidden">
-    <div class="search-row">
-      <input
-        type="text"
-        id="ned-q"
-        placeholder="e.g. NGC 1300, M51, Messier 101…"
-        maxlength="120"
-        onkeydown="if(event.key==='Enter') nameLookup()"
-        aria-label="Galaxy name for NED lookup"
-      >
-      <button class="btn btn-amber" onclick="nameLookup()" id="ned-btn">Lookup ↗</button>
-    </div>
-
-    <div class="status" id="ned-status" role="status"></div>
-
-    <!-- NED result + hips2fits cutouts — hidden until a successful lookup -->
-    <div id="ned-result" class="hidden">
-      <!-- NED data card: canonical name, RA, Dec, redshift, object type -->
-      <div class="ned-card" style="margin-top:14px;">
-        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">NED OBJECT</div>
-        <div style="font-size:16px;font-weight:500;color:var(--amber);" id="ned-name"></div>
-        <!-- Field grid populated by nameLookup() in app.js -->
-        <div class="ned-grid" id="ned-fields"></div>
-      </div>
-
-      <!-- Multi-wavelength sky cutout cards (DSS2, SDSS, Pan-STARRS, 2MASS, GALEX)
-           populated by loadHipsCutouts() in app.js -->
-      <div id="hips-previews" class="results-grid"></div>
-      <div class="status" id="hips-status" role="status"></div>
-    </div>
-  </div>
-
-  <!-- ── Tab 3: Local file upload ── -->
+  <!-- Tab 2: Local file upload -->
   <div id="tab-upload" class="hidden">
-    <!-- Clicking the visible drop zone triggers the hidden file input -->
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <!-- Hidden: accept restricts MIME types; JS validates size on selection -->
       <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif">
-
       <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true"
            style="margin-bottom:10px;opacity:.35;">
         <circle cx="18" cy="18" r="13" stroke="#EF9F27" stroke-width="1"/>
@@ -162,40 +113,20 @@
     </div>
   </div>
 
-
   <!-- ═══════════════════════════════════════════
-       SELECTED IMAGE + ANALYZE BUTTON
-       Shown once a source image has been chosen from any tab.
-       Hidden by default; app.js calls showAnalyzeSection() to reveal it.
+       SELECTED IMAGE PREVIEW
   ═══════════════════════════════════════════ -->
   <div id="analyze-section" class="hidden" style="margin-top:20px;">
     <div class="sep"></div>
-
-    <!-- Preview of the currently selected image -->
     <div class="preview-wrap">
       <img id="main-preview" src="" alt="Selected galaxy image">
       <span class="preview-tag" id="preview-label">TARGET</span>
     </div>
-
-    <!-- Single action: run the pixel analysis pipeline (entirely local, no network) -->
-    <button
-      class="btn btn-amber"
-      style="width:100%;margin-top:10px;"
-      id="px-btn"
-      onclick="runPixelAnalysis()"
-    >
-      ⬡ Run Pixel Analysis
-    </button>
-
     <div class="status" id="analyze-status" role="status"></div>
   </div>
 
-
   <!-- ═══════════════════════════════════════════
        ANALYSIS PANEL
-       Appears during and after a pixel analysis run.
-       Left column: four canvas visualisations + brightness profile chart.
-       Right column: live console log of each pipeline step.
   ═══════════════════════════════════════════ -->
   <div id="analysis-panel" class="hidden">
     <div class="sep"></div>
@@ -204,103 +135,75 @@
     </div>
 
     <div class="analysis-layout">
-
-      <!-- ── Visualisation strip ── -->
       <div class="viz-strip">
-
-        <!-- Row 1: Grayscale conversion and asinh contrast stretch -->
         <div class="viz-row">
           <div class="viz-card">
             <div class="viz-label">GRAYSCALE (Rec.709)</div>
-            <!-- Filled by renderGrayCanvas('cv-gray', …) -->
             <canvas id="cv-gray"></canvas>
           </div>
           <div class="viz-card">
             <div class="viz-label">CONTRAST STRETCH (asinh)</div>
-            <!-- Filled by renderGrayCanvas('cv-contrast', …) with asinh map function -->
             <canvas id="cv-contrast"></canvas>
           </div>
         </div>
-
-        <!-- Row 2: Sobel edge map and isophote ellipse overlay -->
         <div class="viz-row">
           <div class="viz-card">
             <div class="viz-label">EDGE DETECTION (Sobel)</div>
-            <!-- Filled by renderGrayCanvas('cv-edge', …) -->
             <canvas id="cv-edge"></canvas>
           </div>
           <div class="viz-card">
             <div class="viz-label">ISOPHOTE OVERLAY</div>
-            <!-- Filled by renderIsoCanvas() — shows r₂₀, rₑ, r₈₀ ellipses + centroid -->
             <canvas id="cv-iso"></canvas>
           </div>
         </div>
-
-        <!-- Radial brightness profile chart -->
         <div class="profile-card">
           <div class="viz-label">RADIAL BRIGHTNESS PROFILE</div>
-          <!-- Filled by renderProfileCanvas() — mean luminance vs. radius in pixels -->
           <canvas id="cv-profile" style="height:130px;"></canvas>
         </div>
+      </div>
 
-      </div><!-- /viz-strip -->
-
-      <!-- ── Analysis console ── -->
       <div class="console-wrap">
         <div class="console-hdr">
           <span class="console-hdr-title">ANALYSIS CONSOLE</span>
-          <!-- Decorative traffic-light dots, cosmetic only -->
           <div style="display:flex;gap:5px;" aria-hidden="true">
             <span class="console-dot" style="background:#E24B4A;"></span>
             <span class="console-dot" style="background:#EF9F27;"></span>
             <span class="console-dot" style="background:#3BA55D;"></span>
           </div>
         </div>
-        <!-- Log lines are appended here by clog() in app.js -->
         <div class="console-scroll" id="console-out" role="log" aria-live="polite"></div>
       </div>
-
-    </div><!-- /analysis-layout -->
-  </div><!-- /analysis-panel -->
-
+    </div>
+  </div>
 
   <!-- ═══════════════════════════════════════════
        RESULTS SECTION
-       Populated by renderPixelResults() after the pipeline completes.
-       Hidden by default.
   ═══════════════════════════════════════════ -->
   <div id="results-section" class="hidden">
     <div class="sep"></div>
 
-    <!-- Section header with raw-JSON toggle link -->
     <div class="slbl">
       Classification
       <a onclick="toggleRaw()" role="button" tabindex="0">raw JSON</a>
     </div>
 
-    <!-- Primary classification card: Hubble type, simplified class, confidence bar -->
     <div class="cls-card">
       <div class="cls-top">
         <div>
-          <!-- e.g. "Sb" or "E4" — set by renderPixelResults() -->
           <div class="hubble-big" id="r-type">—</div>
-          <!-- e.g. "Spiral Galaxy" -->
           <div class="cls-name"  id="r-name">—</div>
         </div>
         <div class="conf-block">
           <div class="conf-lbl">CONFIDENCE</div>
           <div class="conf-pct" id="r-conf">—</div>
-          <!-- Width of conf-fill is set to the confidence percentage -->
           <div class="conf-bg">
             <div class="conf-fill" id="r-conf-bar" style="width:0%"></div>
           </div>
         </div>
       </div>
-      <!-- Short description of the analysis method used -->
       <div class="cls-method" id="r-method">—</div>
     </div>
 
-    <!-- NED catalog comparison — only shown when object was looked up via Tab 2 -->
     <div id="r-compare" class="hidden">
       <div class="compare-row">
         <div style="font-size:9px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;">
@@ -316,50 +219,39 @@
             <div style="font-size:12px;color:var(--text);margin-top:3px;" id="cmp-ned">—</div>
           </div>
         </div>
-        <!-- Agreement / discrepancy pill + explanation -->
         <div style="margin-top:10px;font-size:11px;" id="cmp-verdict"></div>
       </div>
     </div>
 
-    <!-- Hubble tuning-fork chip strip — active chip highlighted in amber -->
     <div class="slbl">Hubble sequence position</div>
     <div class="chips" id="r-chips"></div>
 
-    <!-- Measurements table: axis ratio, Sérsic n, CAS indices, etc. -->
     <div class="slbl">Structural measurements</div>
     <div class="meas-table" id="r-meas"></div>
 
-    <!-- Two-column card row: detected features + CAS indices summary -->
     <div class="grid2" style="margin-top:10px;">
       <div class="card">
         <div class="card-lbl">Detected morphological features</div>
-        <!-- List items populated by renderPixelResults() -->
         <ul class="feat-list" id="r-feats"></ul>
       </div>
       <div class="card">
         <div class="card-lbl">CAS indices (non-parametric)</div>
-        <!-- C, A, S values + qualitative labels, populated by renderPixelResults() -->
         <div id="r-cas" style="font-size:12px;color:var(--text2);line-height:2.1;"></div>
       </div>
     </div>
 
-    <!-- Raw JSON dump — hidden until user clicks "raw JSON" link above -->
     <div id="raw-json"></div>
 
     <button class="btn btn-sm" style="width:100%;margin-top:16px;" onclick="resetAll()">
       ↩ Analyze another galaxy
     </button>
-  </div><!-- /results-section -->
+  </div>
 
 </div><!-- /wrap -->
 
 
 <!-- ═══════════════════════════════════════════
      METHODOLOGY MODAL
-     Full plain-language explanation of the pixel analysis pipeline.
-     Two-column layout: sticky sidebar navigation on the left,
-     scrollable content sections on the right.
-     Opened by the 📖 How It Works button in the header.
 ═══════════════════════════════════════════ -->
 <div class="modal-overlay hidden" id="modal-methodology" role="dialog" aria-modal="true" aria-label="How the classifier works">
   <div class="modal meth-modal">
@@ -371,8 +263,6 @@
     </div>
 
     <div class="meth-layout">
-
-      <!-- ── Sticky sidebar: section links ── -->
       <nav class="meth-nav" aria-label="Section navigation">
         <a href="#meth-intro"      class="meth-nav-link" onclick="methScroll('meth-intro')">Overview</a>
         <a href="#meth-pixels"     class="meth-nav-link" onclick="methScroll('meth-pixels')">What is a pixel?</a>
@@ -397,10 +287,8 @@
         <a href="#meth-refs"  class="meth-nav-link" onclick="methScroll('meth-refs')">References</a>
       </nav>
 
-      <!-- ── Scrollable content ── -->
       <div class="meth-body" id="meth-scroll-body">
 
-        <!-- ─ Overview ─ -->
         <section id="meth-intro" class="meth-section">
           <h3>What is this classifier trying to do?</h3>
           <p>When astronomers look at a galaxy through a telescope, they can usually tell at a glance whether it looks like a smooth, featureless blob, a pinwheel with sweeping arms, or something messy and irregular. A century of observation produced the <strong>Hubble sequence</strong> — a classification scheme that sorts galaxies into families based on their visual shape, from smooth ellipticals on one end, through disk-shaped spirals in the middle, to chaotic irregulars on the other.</p>
@@ -408,14 +296,12 @@
           <p>The key insight is that the <em>shape of the light</em> in an image carries a surprising amount of information. How centrally concentrated is the brightness? Is the galaxy symmetrical, or does one side look different from the other? Is the light smooth and featureless, or patchy and clumped? Does the inner core look stretched in a way that suggests a bar? Do the edges form a swirling pattern suggesting spiral arms? Each of these questions can be answered mathematically by analysing the raw pixel values — entirely in your browser, with no data sent anywhere.</p>
         </section>
 
-        <!-- ─ Pixels ─ -->
         <section id="meth-pixels" class="meth-section">
           <h3>A quick primer: what is a pixel value?</h3>
           <p>Every digital image is a grid of tiny squares called <strong>pixels</strong>. Each pixel stores three numbers: the brightness of red light, green light, and blue light at that point. These numbers typically range from 0 (completely dark) to 255 (maximum brightness). A pixel with values (255, 255, 255) is pure white; (0, 0, 0) is pure black.</p>
           <p>All of the analysis in this pipeline works by reading these numbers — sometimes for every single pixel in an image that might be hundreds of thousands of pixels large — and performing calculations on them. Modern browsers can do this very quickly using the HTML5 Canvas API, which is why this analysis runs entirely on your device.</p>
         </section>
 
-        <!-- ─ Step 1 ─ -->
         <section id="meth-s1" class="meth-section">
           <div class="meth-step-badge">Step 1</div>
           <h3>Grayscale conversion — turning colour into brightness</h3>
@@ -426,7 +312,6 @@
           <p><strong>What gets reported:</strong> The console logs the <strong>DN range</strong> (digital number — the pixel brightness scale), the <strong>mean brightness</strong>, and the <strong>standard deviation σ</strong>. These serve as a sanity check: if the mean is near 255, the image is likely overexposed; if σ is very small, contrast is low and measurements may be unreliable.</p>
         </section>
 
-        <!-- ─ Step 2 ─ -->
         <section id="meth-s2" class="meth-section">
           <div class="meth-step-badge">Step 2</div>
           <h3>Asinh contrast stretch — making faint features visible</h3>
@@ -436,7 +321,6 @@
           <p>This enriched view is what the <strong>Contrast Stretch</strong> and <strong>Isophote Overlay</strong> canvases display, and it gives the rest of the pipeline more signal to work with in the faint outer regions.</p>
         </section>
 
-        <!-- ─ Step 3 ─ -->
         <section id="meth-s3" class="meth-section">
           <div class="meth-step-badge">Step 3</div>
           <h3>Photometric centroid — finding the galaxy's true centre</h3>
@@ -446,7 +330,6 @@
           <p>In practice this lies very close to the nucleus. If the centroid is more than 15% of the image width from the geometric centre of the frame, the console issues a warning that the galaxy may not fill the frame symmetrically and some measurements may be less reliable.</p>
         </section>
 
-        <!-- ─ Step 4 ─ -->
         <section id="meth-s4" class="meth-section">
           <div class="meth-step-badge">Step 4</div>
           <h3>Second-moment ellipse — measuring shape and orientation</h3>
@@ -466,7 +349,6 @@
           <p><strong>The E-class connection:</strong> For elliptical galaxies the apparent elongation defines the subtype. An E0 looks perfectly circular; an E7 is maximally elongated. The classification is simply E<sub>n</sub> = round(10 × ε), so the pipeline reads the E-class directly from the measured ellipticity.</p>
         </section>
 
-        <!-- ─ Step 5 ─ -->
         <section id="meth-s5" class="meth-section">
           <div class="meth-step-badge">Step 5</div>
           <h3>Radial brightness profile — how light falls off with distance</h3>
@@ -475,7 +357,6 @@
           <p>The outermost ring extends only to the largest circle that fits entirely inside the image, ensuring every ring samples a complete 360° arc and no bin is missing pixels from the corners. The profile is rendered as a live chart with a dashed vertical line marking r<sub>e</sub> (the half-light radius).</p>
         </section>
 
-        <!-- ─ Step 6 ─ -->
         <section id="meth-s6" class="meth-section">
           <div class="meth-step-badge">Step 6</div>
           <h3>Sérsic index — what shape is the brightness profile?</h3>
@@ -496,7 +377,6 @@
           <p><strong>How the fitting works:</strong> The pipeline tests eight candidate values of n (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 6.0). For each candidate, it linearises the Sérsic equation: plotting ln(brightness) against radius<sup>1/n</sup> should produce a straight line for a true Sérsic profile with index n. The pipeline fits a line for each candidate and measures fit quality with R² (1 = perfect, 0 = no fit). The n with the highest R² wins.</p>
         </section>
 
-        <!-- ─ Step 7 ─ -->
         <section id="meth-s7" class="meth-section">
           <div class="meth-step-badge">Step 7</div>
           <h3>Concentration index C — how centrally peaked is the galaxy?</h3>
@@ -516,7 +396,6 @@
           <p>C is the first of the three <strong>CAS indices</strong> (Concentration, Asymmetry, Clumpiness), a widely used system introduced in a landmark 2003 paper by Christopher Conselice, designed to classify galaxies automatically from imaging data.</p>
         </section>
 
-        <!-- ─ Step 8 ─ -->
         <section id="meth-s8" class="meth-section">
           <div class="meth-step-badge">Step 8</div>
           <h3>Asymmetry index A — how symmetric is the galaxy?</h3>
@@ -535,7 +414,6 @@
           </table>
         </section>
 
-        <!-- ─ Step 9 ─ -->
         <section id="meth-s9" class="meth-section">
           <div class="meth-step-badge">Step 9</div>
           <h3>Clumpiness index S — is the light smooth or patchy?</h3>
@@ -545,7 +423,6 @@
           <p>S near 0 indicates a smooth galaxy (elliptical or S0). S above ~0.15–0.20 indicates significant clumpiness and active star formation, typical of late spirals and irregulars. S is the third and final CAS index.</p>
         </section>
 
-        <!-- ─ Step 10 ─ -->
         <section id="meth-s10" class="meth-section">
           <div class="meth-step-badge">Step 10</div>
           <h3>Sobel edge detection — finding structure boundaries</h3>
@@ -555,7 +432,6 @@
           <p>The resulting edge map is rendered in the analysis panel: spiral arms appear as bright curved lines, bar edges as straight lines, the outer disk as a bright ring. More importantly, this map is passed to the spiral arm indicator in Step 12.</p>
         </section>
 
-        <!-- ─ Step 11 ─ -->
         <section id="meth-s11" class="meth-section">
           <div class="meth-step-badge">Step 11</div>
           <h3>Bar detection — does the galaxy have a central bar?</h3>
@@ -570,7 +446,6 @@
           <p>A bar score above 0.22 classifies the galaxy as barred (SB). Above 0.35 is considered a strong, confident detection.</p>
         </section>
 
-        <!-- ─ Step 12 ─ -->
         <section id="meth-s12" class="meth-section">
           <div class="meth-step-badge">Step 12</div>
           <h3>Spiral arm indicator — detecting the pinwheel pattern</h3>
@@ -593,34 +468,24 @@
           </table>
         </section>
 
-        <!-- ─ Decision tree ─ -->
         <section id="meth-tree" class="meth-section">
           <h3>The classification decision tree</h3>
           <p>With all twelve measurements in hand, the pipeline runs a <strong>decision tree</strong> — a series of if/then tests in a specific priority order. The order matters: some conditions override others.</p>
-
           <div class="meth-tree-step">
             <div class="meth-tree-num">1</div>
-            <div>
-              <strong>Check for Irregular:</strong> If A &gt; 0.42 (very high asymmetry), or if A &gt; 0.32 <em>and</em> C &lt; 2.2 (moderately asymmetric and diffuse), the galaxy is classified as <strong>Irregular</strong>. This check comes first because an irregular galaxy can accidentally look like a disk galaxy in concentration — but it cannot fake low asymmetry. Catching irregulars first prevents them from being misclassified as spirals.
-            </div>
+            <div><strong>Check for Irregular:</strong> If A &gt; 0.42 (very high asymmetry), or if A &gt; 0.32 <em>and</em> C &lt; 2.2 (moderately asymmetric and diffuse), the galaxy is classified as <strong>Irregular</strong>. This check comes first because an irregular galaxy can accidentally look like a disk galaxy in concentration — but it cannot fake low asymmetry. Catching irregulars first prevents them from being misclassified as spirals.</div>
           </div>
           <div class="meth-tree-step">
             <div class="meth-tree-num">2</div>
-            <div>
-              <strong>Check for Elliptical:</strong> If n ≥ 3.0 <em>and</em> C ≥ 3.0 <em>and</em> A &lt; 0.15 <em>and</em> S &lt; 0.2 <em>and</em> spiral score &lt; 0.35, the galaxy is classified as <strong>Elliptical</strong>. All five conditions must be met simultaneously — this is intentionally strict to avoid misclassifying a well-behaved early spiral. The E-class (E0–E7) is read from the ellipticity.
-            </div>
+            <div><strong>Check for Elliptical:</strong> If n ≥ 3.0 <em>and</em> C ≥ 3.0 <em>and</em> A &lt; 0.15 <em>and</em> S &lt; 0.2 <em>and</em> spiral score &lt; 0.35, the galaxy is classified as <strong>Elliptical</strong>. All five conditions must be met simultaneously — this is intentionally strict to avoid misclassifying a well-behaved early spiral. The E-class (E0–E7) is read from the ellipticity.</div>
           </div>
           <div class="meth-tree-step">
             <div class="meth-tree-num">3</div>
-            <div>
-              <strong>Check for Lenticular (S0):</strong> If n ≥ 2.0, C ≥ 2.5, A &lt; 0.18, spiral score &lt; 0.30, and bar score &lt; 0.25, the galaxy is classified as <strong>Lenticular</strong>. These are disk-shaped galaxies that have consumed or lost their star-forming gas — the disk shape of a spiral with the featureless smoothness of an elliptical.
-            </div>
+            <div><strong>Check for Lenticular (S0):</strong> If n ≥ 2.0, C ≥ 2.5, A &lt; 0.18, spiral score &lt; 0.30, and bar score &lt; 0.25, the galaxy is classified as <strong>Lenticular</strong>. These are disk-shaped galaxies that have consumed or lost their star-forming gas — the disk shape of a spiral with the featureless smoothness of an elliptical.</div>
           </div>
           <div class="meth-tree-step">
             <div class="meth-tree-num">4</div>
-            <div>
-              <strong>Spiral or Barred Spiral:</strong> Every galaxy that reaches this step is treated as a disk galaxy. The bar score determines whether it is <strong>SB</strong> (barred) or <strong>S</strong> (unbarred). The spiral sub-type (a through d) is then assigned from concentration and Sérsic index:
-            </div>
+            <div><strong>Spiral or Barred Spiral:</strong> Every galaxy that reaches this step is treated as a disk galaxy. The bar score determines whether it is <strong>SB</strong> (barred) or <strong>S</strong> (unbarred). The spiral sub-type (a through d) is then assigned from concentration and Sérsic index:</div>
           </div>
           <table class="meth-table" style="margin-top:10px;">
             <thead><tr><th>C / n</th><th>Sub-type</th><th>Description</th></tr></thead>
@@ -635,7 +500,6 @@
           </table>
         </section>
 
-        <!-- ─ Confidence ─ -->
         <section id="meth-conf" class="meth-section">
           <h3>Confidence score</h3>
           <p>Each branch of the decision tree computes a <strong>confidence percentage</strong> alongside the classification. This reflects how strongly the measured values support the chosen class — essentially, how far the metrics are from the decision boundaries.</p>
@@ -643,7 +507,6 @@
           <p>The confidence score is <em>not</em> a probability calibrated against a large labelled dataset. It is an internal self-consistency measure: 90% means all measurements strongly agree; 50% means the galaxy is near a classification boundary. Treat low-confidence results as a cue to inspect the isophote overlay and console output directly.</p>
         </section>
 
-        <!-- ─ Isophote overlay ─ -->
         <section id="meth-iso" class="meth-section">
           <h3>The isophote overlay</h3>
           <p>The <strong>Isophote Overlay</strong> canvas is a visual summary of the shape measurements from Steps 3–5 and 7. It draws the asinh-stretched galaxy as a background and overlays three concentric ellipses, all with the same axis ratio and position angle computed from the second-moment fit:</p>
@@ -655,7 +518,6 @@
           <p>The centroid is marked with a crosshair and the major axis direction by a dashed line. These overlays let you immediately verify whether the measurements are sensible: if the ellipses are centred on the nucleus and aligned with the visible elongation, the measurements are reliable. If they are off-centre, misaligned, or wildly over-sized, something has gone wrong — perhaps a companion galaxy or a bright foreground star is biasing the centroid.</p>
         </section>
 
-        <!-- ─ Limitations ─ -->
         <section id="meth-lim" class="meth-section">
           <h3>Known limitations</h3>
           <div class="meth-lim-item">
@@ -680,7 +542,6 @@
           </div>
         </section>
 
-        <!-- ─ References ─ -->
         <section id="meth-refs" class="meth-section">
           <h3>References</h3>
           <ul class="meth-refs-list">
@@ -699,11 +560,6 @@
 </div><!-- /modal-overlay #modal-methodology -->
 
 
-
-     Opened by the 🔒 button in the header.
-     Documents the security posture of this app and mitigations applied.
-     Closed by the ✕ button, clicking the overlay backdrop, or pressing Escape.
-═══════════════════════════════════════════ -->
 <div class="modal-overlay hidden" id="modal-security" role="dialog" aria-modal="true" aria-label="Security considerations">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('security')" aria-label="Close">✕ Close</button>
@@ -712,7 +568,6 @@
       Full audit of this app's security posture. Items marked ✓ Fixed have been mitigated in this build.
     </div>
 
-    <!-- HIGH severity items -->
     <div class="sec-item">
       <span class="sev-pill sev-hi sec-sev">HIGH</span>
       <span class="sec-title">XSS via unsanitized third-party data</span>
@@ -728,7 +583,6 @@
       </div>
     </div>
 
-    <!-- MEDIUM severity items -->
     <div class="sec-item">
       <span class="sev-pill sev-med sec-sev">MED</span>
       <span class="sec-title">No Content Security Policy (previous version)</span>
@@ -755,7 +609,6 @@
       </div>
     </div>
 
-    <!-- LOW severity items -->
     <div class="sec-item">
       <span class="sev-pill sev-lo sec-sev">LOW</span>
       <span class="sec-title">Canvas pixel access (CORS taint)</span>

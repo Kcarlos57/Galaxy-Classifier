@@ -68,19 +68,19 @@
   --purpleL: #CDB8FF; /* light purple — INFO console messages */
 
   /* Text shades */
-  --text:  #ddd8cc; /* primary text                        */
-  --text2: #7a7670; /* secondary / subdued text            */
-  --text3: #4a4640; /* tertiary / label text               */
+  --text:  #f0ece4; /* primary text — boosted for contrast */
+  --text2: #b8b4ae; /* secondary text — boosted for contrast */
+  --text3: #7a7670; /* tertiary / label text — boosted     */
 
   /* Border shades */
-  --border:  rgba(255,255,255,.07);  /* subtle border       */
-  --border2: rgba(255,255,255,.13);  /* slightly more visible */
+  --border:  rgba(255,255,255,.14);  /* subtle border       */
+  --border2: rgba(255,255,255,.26);  /* slightly more visible */
 
   /* Typography
      --mono: monospace used for console, data values, buttons, inputs
      --sans: proportional sans-serif used for prose (modal body, descriptions) */
-  --mono: 'IBM Plex Mono', 'Courier New', Courier, monospace;
   --sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --mono: 'IBM Plex Mono', 'Courier New', Courier, monospace;
 }
 
 
@@ -96,7 +96,9 @@
 body {
   background:  var(--bg);
   color:       var(--text);
-  font-family: var(--mono);
+  font-family: var(--sans);
+  font-size:   16px;
+  line-height: 1.6;
   min-height:  100vh;
   padding:     28px 16px 80px; /* extra bottom padding so results don't sit against the viewport edge */
 }
@@ -124,18 +126,18 @@ body {
 }
 
 .hdr-text {
-  font-size:      10px;
+  font-size:      13px;
   color:          var(--text2);
-  letter-spacing: .12em;
+  letter-spacing: .04em;
 }
 
 /* App title — larger, amber, slightly looser tracking */
 .hdr-text strong {
   display:        block;
-  font-size:      18px;
+  font-size:      22px;
   color:          var(--amber);
-  letter-spacing: .04em;
-  font-weight:    500;
+  letter-spacing: .02em;
+  font-weight:    600;
 }
 
 /* Container for header action buttons (e.g. 🔒 Security) */
@@ -151,11 +153,11 @@ body {
   background:     transparent;
   border:         1px solid var(--border2);
   color:          var(--text2);
-  font-family:    var(--mono);
-  font-size:      10px;
-  letter-spacing: .07em;
-  padding:        6px 12px;
-  border-radius:  6px;
+  font-family:    var(--sans);
+  font-size:      13px;
+  letter-spacing: .02em;
+  padding:        9px 18px;
+  border-radius:  8px;
   cursor:         pointer;
   transition:     border-color .18s, color .18s;
 }
@@ -192,10 +194,10 @@ body {
   background:     var(--bg2);
   border:         1px solid var(--border);
   border-radius:  6px;
-  padding:        9px 12px;
-  font-family:    var(--mono);
-  font-size:      11px;
-  letter-spacing: .08em;
+  padding:        12px 16px;
+  font-family:    var(--sans);
+  font-size:      15px;
+  letter-spacing: .01em;
   color:          var(--text2);
   cursor:         pointer;
   text-align:     center;
@@ -229,9 +231,9 @@ body {
   background:     var(--bg2);
   border:         1px solid var(--border2);
   border-radius:  7px;
-  padding:        10px 14px;
-  font-family:    var(--mono);
-  font-size:      13px;
+  padding:        13px 18px;
+  font-family:    var(--sans);
+  font-size:      16px;
   color:          var(--text);
   outline:        none;
   transition:     border-color .18s;
@@ -255,11 +257,11 @@ body {
   background:     transparent;
   border:         1px solid var(--border2);
   color:          var(--text);
-  font-family:    var(--mono);
-  font-size:      12px;
-  letter-spacing: .06em;
-  padding:        10px 18px;
-  border-radius:  7px;
+  font-family:    var(--sans);
+  font-size:      15px;
+  letter-spacing: .01em;
+  padding:        12px 24px;
+  border-radius:  8px;
   cursor:         pointer;
   transition:     border-color .18s, color .18s, background .18s;
   white-space:    nowrap;
@@ -297,8 +299,8 @@ body {
 
 /* Small size modifier — for pagination, reset, etc. */
 .btn-sm {
-  font-size: 10px;
-  padding:   6px 12px;
+  font-size: 13px;
+  padding:   9px 16px;
 }
 
 
@@ -323,12 +325,12 @@ body {
 }
 
 #drop-zone p {
-  font-size: 13px;
+  font-size: 16px;
   color:     var(--text2);
 }
 
 #drop-zone p.sub {
-  font-size:  11px;
+  font-size:  14px;
   color:      var(--text3);
   margin-top: 4px;
 }
@@ -357,7 +359,59 @@ body {
   border-radius: 8px;
   overflow:      hidden;
   cursor:        pointer;
+  position:      relative; /* needed for the hover tooltip overlay */
   transition:    border-color .18s;
+}
+
+/*
+ * Hover tooltip that floats over the image portion of a NASA result card.
+ * Invisible by default; fades in when the card is hovered.
+ * Clicking it opens the image in a new tab without triggering card select.
+ */
+.img-card-newtab {
+  /* Positioned over the centre of the thumbnail image area */
+  position:        absolute;
+  top:             40%;
+  left:            50%;
+  transform:       translate(-50%, -50%) scale(0.92);
+  /* Sizing: width matches the card minus gutters so text always fits */
+  width:           calc(100% - 20px);
+  box-sizing:      border-box;
+  background:      rgba(8, 8, 16, 0.90);
+  color:           var(--amber);
+  border:          1px solid var(--amber2);
+  border-radius:   8px;
+  padding:         8px 10px;
+  font-family:     var(--sans);
+  font-size:       12px;
+  font-weight:     600;
+  /* Allow text to wrap so it never overflows the button */
+  white-space:     normal;
+  word-break:      keep-all;
+  text-align:      center;
+  line-height:     1.35;
+  pointer-events:  none;
+  opacity:         0;
+  z-index:         10;
+  transition:      opacity .18s ease, transform .18s ease;
+  box-shadow:      0 4px 18px rgba(0,0,0,.55);
+  cursor:          pointer;
+  /* Reset browser button defaults */
+  appearance:      none;
+  -webkit-appearance: none;
+}
+
+.img-card:hover .img-card-newtab {
+  opacity:        1;
+  pointer-events: auto;
+  transform:      translate(-50%, -50%) scale(1);
+}
+
+.img-card-newtab:hover,
+.img-card-newtab:focus-visible {
+  background:   rgba(239, 159, 39, 0.18);
+  border-color: var(--amber);
+  outline:      none;
 }
 
 .img-card:hover {
@@ -384,7 +438,7 @@ body {
 }
 
 .img-card-title {
-  font-size:     10px;
+  font-size:     13px;
   color:         var(--text);
   line-height:   1.5;
   white-space:   nowrap;
@@ -393,7 +447,7 @@ body {
 }
 
 .img-card-sub {
-  font-size:  9px;
+  font-size:  12px;
   color:      var(--text3);
   margin-top: 2px;
 }
@@ -459,7 +513,8 @@ body {
 }
 
 .ned-lbl {
-  font-size:      9px;
+  font-family:    var(--sans);
+  font-size:      11px;
   color:          var(--text3);
   letter-spacing: .1em;
   text-transform: uppercase;
@@ -479,7 +534,8 @@ body {
    Hidden by default (display:none); shown by JS with showStatus().
 ═══════════════════════════════════════════════════════════ */
 .status {
-  font-size:  12px;
+  font-family: var(--sans);
+  font-size:  14px;
   color:      var(--text2);
   margin-top: 10px;
   display:    none;
@@ -521,7 +577,8 @@ body {
 }
 
 .pager-info {
-  font-size: 11px;
+  font-family: var(--sans);
+  font-size: 14px;
   color:     var(--text3);
 }
 
@@ -575,10 +632,11 @@ body {
 }
 
 .viz-label {
-  font-size:      9px;
+  font-family:    var(--sans);
+  font-size:      11px;
   color:          var(--text3);
-  letter-spacing: .1em;
-  padding:        5px 8px;
+  letter-spacing: .05em;
+  padding:        6px 10px;
   background:     var(--bg3);
 }
 
@@ -630,7 +688,7 @@ body {
 }
 
 .console-hdr-title {
-  font-size:      10px;
+  font-size:      12px;
   color:          var(--text3);
   letter-spacing: .1em;
 }
@@ -648,8 +706,8 @@ body {
   height:          420px;
   overflow-y:      auto;
   padding:         10px 4px;
-  font-size:       11px;
-  line-height:     1.7;
+  font-size:       13px;
+  line-height:     1.75;
   scroll-behavior: smooth;
 }
 
@@ -667,15 +725,15 @@ body {
 
 /* Timestamp column — fixed width, very dim */
 .log-ts {
-  color:      rgba(255,255,255,.2);
-  font-size:  10px;
+  color:      rgba(255,255,255,.35);
+  font-size:  12px;
   flex-shrink: 0;
   width:      56px;
 }
 
 /* Type tag column — coloured by log type */
 .log-tag {
-  font-size:      9px;
+  font-size:      11px;
   font-weight:    500;
   flex-shrink:    0;
   width:          44px;
@@ -738,7 +796,7 @@ body {
 
 /* Plain-English class name below the Hubble code */
 .cls-name {
-  font-size:  12px;
+  font-size:  16px;
   color:      var(--text2);
   margin-top: 4px;
 }
@@ -750,13 +808,13 @@ body {
 }
 
 .conf-pct {
-  font-size:   22px;
+  font-size:   26px;
   font-weight: 500;
   color:       var(--text);
 }
 
 .conf-lbl {
-  font-size:      9px;
+  font-size:      12px;
   color:          var(--text3);
   letter-spacing: .1em;
 }
@@ -779,7 +837,8 @@ body {
 
 /* Method description line at the bottom of the classification card */
 .cls-method {
-  font-size:   10px;
+  font-family: var(--sans);
+  font-size:   13px;
   color:       var(--text3);
   margin-top:  8px;
   padding-top: 8px;
@@ -800,8 +859,9 @@ body {
 }
 
 .chip {
-  font-size:     10px;
-  padding:       3px 9px;
+  font-family:   var(--sans);
+  font-size:     13px;
+  padding:       5px 12px;
   border:        1px solid var(--border);
   border-radius: 4px;
   color:         var(--text3);
@@ -832,9 +892,10 @@ body {
   display:         flex;
   justify-content: space-between;
   align-items:     center;
-  padding:         8px 16px;
+  padding:         11px 18px;
   border-bottom:   1px solid var(--border);
-  font-size:       12px;
+  font-family:     var(--sans);
+  font-size:       14px;
 }
 
 .meas-row:last-child {
@@ -887,9 +948,10 @@ body {
 
 /* Small uppercase label at top of card */
 .card-lbl {
-  font-size:      9px;
+  font-family:    var(--sans);
+  font-size:      11px;
   color:          var(--text3);
-  letter-spacing: .1em;
+  letter-spacing: .07em;
   text-transform: uppercase;
   margin-bottom:  10px;
 }
@@ -905,7 +967,8 @@ body {
 }
 
 .feat-list li {
-  font-size:     12px;
+  font-family:   var(--sans);
+  font-size:     14px;
   color:         var(--text2);
   padding:       4px 0;
   border-bottom: 1px solid var(--border);
@@ -971,7 +1034,8 @@ body {
    The "raw JSON" link is right-aligned inside the same row.
 ═══════════════════════════════════════════════════════════ */
 .slbl {
-  font-size:      9px;
+  font-family:    var(--sans);
+  font-size:      12px;
   color:          var(--text3);
   letter-spacing: .12em;
   text-transform: uppercase;
@@ -1044,9 +1108,9 @@ body {
   background:    transparent;
   border:        1px solid var(--border);
   color:         var(--text2);
-  font-family:   var(--mono);
-  font-size:     11px;
-  padding:       4px 10px;
+  font-family:   var(--sans);
+  font-size:     14px;
+  padding:       8px 16px;
   border-radius: 5px;
   cursor:        pointer;
 }
@@ -1057,7 +1121,8 @@ body {
 }
 
 .modal h2 {
-  font-size:      15px;
+  font-family:    var(--sans);
+  font-size:      20px;
   color:          var(--amber);
   letter-spacing: .05em;
   font-weight:    500;
@@ -1065,7 +1130,7 @@ body {
 }
 
 .modal-sub {
-  font-size:     11px;
+  font-size:     14px;
   color:         var(--text3);
   margin-bottom: 20px;
   font-family:   var(--sans);
@@ -1084,8 +1149,9 @@ body {
 /* Severity pill inline with the title */
 .sec-sev {
   display:       inline-block;
-  font-size:     9px;
-  padding:       2px 6px;
+  font-family:   var(--sans);
+  font-size:     11px;
+  padding:       3px 9px;
   border-radius: 4px;
   font-weight:   500;
   margin-right:  8px;
@@ -1099,13 +1165,14 @@ body {
 /* Issue title — inline so it sits next to the severity pill */
 .sec-title {
   display:     inline;
-  font-size:   12px;
+  font-family: var(--sans);
+  font-size:   15px;
   color:       var(--text);
   font-weight: 500;
 }
 
 .sec-desc {
-  font-size:   11px;
+  font-size:   14px;
   color:       var(--text2);
   line-height: 1.75;
   margin-top:  5px;
@@ -1114,7 +1181,8 @@ body {
 
 /* Mitigation note — prepends "✓ Fixed: " via CSS */
 .sec-fix {
-  font-size:  10px;
+  font-family: var(--sans);
+  font-size:  13px;
   color:      var(--tealL);
   margin-top: 4px;
 }
@@ -1150,7 +1218,7 @@ body {
 }
 
 .cors-helper-msg {
-  font-size:  12px;
+  font-size:  14px;
   color:      var(--text2);
   flex:       1;
   min-width:  180px;
@@ -1245,7 +1313,8 @@ body {
 }
 
 .meth-nav-divider {
-  font-size:      9px;
+  font-family:    var(--sans);
+  font-size:      11px;
   letter-spacing: .12em;
   text-transform: uppercase;
   color:          var(--text3);
@@ -1255,9 +1324,10 @@ body {
 
 .meth-nav-link {
   display:         block;
-  font-size:       11px;
+  font-family:     var(--sans);
+  font-size:       14px;
   color:           var(--text2);
-  padding:         5px 16px;
+  padding:         8px 18px;
   text-decoration: none;
   cursor:          pointer;
   transition:      color .15s, background .15s;
@@ -1298,7 +1368,8 @@ body {
 }
 
 .meth-section h3 {
-  font-size:     14px;
+  font-family:   var(--sans);
+  font-size:     17px;
   font-weight:   500;
   color:         var(--text);
   margin-bottom: 12px;
@@ -1306,7 +1377,7 @@ body {
 }
 
 .meth-section p {
-  font-size:     12px;
+  font-size:     15px;
   color:         var(--text2);
   line-height:   1.85;
   margin-bottom: 10px;
@@ -1351,7 +1422,7 @@ body {
 }
 
 .meth-list li {
-  font-size:    12px;
+  font-size:    14px;
   color:        var(--text2);
   padding:      4px 0 4px 16px;
   position:     relative;
@@ -1446,7 +1517,7 @@ body {
 .meth-lim-item:last-child { margin-bottom: 0; }
 
 .meth-lim-title {
-  font-size:     12px;
+  font-size:     15px;
   font-weight:   500;
   color:         var(--text);
   margin-bottom: 6px;
@@ -1458,7 +1529,7 @@ body {
 .meth-refs-list { list-style: none; }
 
 .meth-refs-list li {
-  font-size:     11px;
+  font-size:     14px;
   color:         var(--text2);
   line-height:   1.8;
   padding:       8px 0 8px 14px;

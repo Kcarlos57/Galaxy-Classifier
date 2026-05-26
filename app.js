@@ -249,11 +249,11 @@ document.addEventListener('keydown', e => {
  */
 function switchTab(t) {
   state.tab = t;
-  ['search', 'name', 'upload'].forEach(id => {
+  ['search', 'upload'].forEach(id => {
     document.getElementById('tab-' + id).classList.toggle('hidden', id !== t);
   });
   document.querySelectorAll('.tab').forEach((el, i) => {
-    el.classList.toggle('active', ['search', 'name', 'upload'][i] === t);
+    el.classList.toggle('active', ['search', 'upload'][i] === t);
   });
 }
 
@@ -266,6 +266,14 @@ function switchTab(t) {
 
 /** Timestamp (ms) when the current analysis run started. */
 let consoleStart = 0;
+
+/**
+ * Cached reference to the console output element.
+ * Populated lazily on first use so it is safe even if the script runs before
+ * the DOM is fully parsed (though in practice the module-level event listeners
+ * below already depend on DOM readiness).
+ */
+let _consoleEl = null;
 
 /**
  * Append a line to the analysis console.
@@ -282,7 +290,8 @@ let consoleStart = 0;
  * @param {string} type - Log type key (see above).
  */
 function clog(msg, type = 'info') {
-  const el = document.getElementById('console-out');
+  if (!_consoleEl) _consoleEl = document.getElementById('console-out');
+  const el = _consoleEl;
   if (!el) return;
 
   // Elapsed time since analysis started
@@ -295,10 +304,12 @@ function clog(msg, type = 'info') {
   line.className = 'log-line';
   // Note: msg is always a string we construct internally, never raw API data.
   // External strings passed as msg are run through esc() at the call site.
+  // elapsed is always a numeric string from toFixed(3); type/tag are hardcoded
+  // literals — none can contain HTML special characters, so esc() is omitted.
   line.innerHTML =
     `<span class="log-ts">[${esc(elapsed)}s]</span>` +
-    `<span class="log-tag tag-${esc(type)}">${esc(tag)}</span>` +
-    `<span class="log-msg msg-${esc(type)}">${msg}</span>`;
+    `<span class="log-tag tag-${type}">${tag}</span>` +
+    `<span class="log-msg msg-${type}">${msg}</span>`;
 
   el.appendChild(line);
   el.scrollTop = el.scrollHeight; // auto-scroll to the newest line
@@ -306,8 +317,8 @@ function clog(msg, type = 'info') {
 
 /** Clear all log lines and reset the elapsed-time counter. */
 function clearConsole() {
-  const el = document.getElementById('console-out');
-  if (el) el.innerHTML = '';
+  if (!_consoleEl) _consoleEl = document.getElementById('console-out');
+  if (_consoleEl) _consoleEl.innerHTML = '';
   consoleStart = Date.now();
 }
 
@@ -401,14 +412,12 @@ function showCorsHelper(imgUrl) {
 
 /**
  * Attempt to load a CORS-blocked image for pixel analysis.
- * Called by the button rendered in showCorsHelper().
+ * Called automatically by selectNasaImage() as the default procedure.
  *
  * @param {string} imgUrl - Remote image URL (validated against TRUSTED_DOMAINS).
+ * @param {string} [title] - Optional label for the image.
  */
-async function fetchAndLoadImage(imgUrl) {
-  const btn = document.getElementById('cors-fetch-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Fetching…'; }
-
+async function fetchAndLoadImage(imgUrl, title) {
   try {
     // Phase 1: fetch() → blob → synthetic File → handleFile()
     // Using mode:'cors' with credentials:'omit'. If the CDN has added or
@@ -418,9 +427,11 @@ async function fetchAndLoadImage(imgUrl) {
     const blob = await res.blob();
 
     // Derive a sane filename from the URL
-    const filename = decodeURIComponent(
-      imgUrl.split('/').pop().split('?')[0] || 'galaxy.jpg'
-    ).slice(0, 120);
+    const filename = title
+      ? String(title).slice(0, 80).replace(/[^a-zA-Z0-9 _\-]/g, '_') + '.jpg'
+      : decodeURIComponent(
+          imgUrl.split('/').pop().split('?')[0] || 'galaxy.jpg'
+        ).slice(0, 120);
 
     // Wrap the blob as a File — handleFile() validates MIME and size then
     // calls setSelectedImage(), which will be able to read pixels from a
@@ -428,24 +439,14 @@ async function fetchAndLoadImage(imgUrl) {
     const file = new File([blob], filename, { type: blob.type || 'image/jpeg' });
 
     hideStatus('analyze-status');
-    switchTab('upload');   // switch tab so the user sees context
     handleFile(file);      // processes exactly like a manual upload
 
   } catch (_) {
-    // Phase 2: fetch() still blocked — trigger a browser download instead.
-    // Browsers CAN download cross-origin images (that's how <img> works);
-    // the restriction is only on JavaScript reading the bytes.
-    if (btn) { btn.textContent = 'Downloading…'; }
-
-    const a = document.createElement('a');
-    a.href     = imgUrl;
-    a.download = decodeURIComponent(
-      imgUrl.split('/').pop().split('?')[0] || 'galaxy.jpg'
-    ).slice(0, 120);
-    a.rel = 'noopener noreferrer';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    // Phase 2: fetch() still blocked — open the image URL in a new tab.
+    // We do NOT use <a download> on cross-origin URLs because browsers ignore
+    // the download attribute for cross-origin resources (security policy) and
+    // navigate the current page instead. Opening a new tab is always safe.
+    window.open(imgUrl, '_blank', 'noopener,noreferrer');
 
     // Switch to upload tab and show a clear next-step message
     switchTab('upload');
@@ -455,10 +456,8 @@ async function fetchAndLoadImage(imgUrl) {
     el.innerHTML     = '';
     const m = document.createElement('span');
     m.className   = 'cors-helper-msg';
-    m.textContent = '⬇ Image downloading — drag it from your Downloads folder onto the drop zone above, or click the zone to browse.';
+    m.textContent = '⬇ Image opened in a new tab — save it, then drag it onto the drop zone above, or click the zone to browse.';
     el.appendChild(m);
-
-    if (btn) { btn.disabled = false; btn.textContent = '⬇ Load image for analysis'; }
   }
 }
 
@@ -526,14 +525,27 @@ async function nasaSearch(page) {
       // Only load images from the trusted NASA CDN
       if (thumb.startsWith('https://images-assets.nasa.gov/')) img.src = thumb;
 
+      // "Open Image in New Tab" button — the ONLY interactive element on the card.
+      // Handled synchronously so browsers permit the popup.
+      // The card div itself has no click handler — images never navigate the current page.
+      const newTabBtn = document.createElement('button');
+      newTabBtn.className = 'img-card-newtab';
+      newTabBtn.setAttribute('type', 'button');
+      newTabBtn.setAttribute('aria-label', 'Open image in new tab: ' + title);
+      newTabBtn.textContent = '↗ Open Image in New Tab';
+      newTabBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        window.open(thumb, '_blank', 'noopener,noreferrer');
+      });
+
       // Use textContent for all user-visible text to avoid innerHTML injection
       const idiv = document.createElement('div'); idiv.className = 'img-card-info';
       const t    = document.createElement('div'); t.className = 'img-card-title'; t.textContent = title;
       const s    = document.createElement('div'); s.className = 'img-card-sub';   s.textContent = (year ? year + ' · ' : '') + center;
 
       idiv.appendChild(t); idiv.appendChild(s);
-      div.appendChild(img); div.appendChild(idiv);
-      div.addEventListener('click', () => selectNasaImage(div, thumb, title, nasaId));
+      div.appendChild(img); div.appendChild(newTabBtn); div.appendChild(idiv);
+      // No card-level click handler — the tooltip button is the sole action.
       grid.appendChild(div);
     });
 
@@ -561,31 +573,22 @@ function nasaPage(dir) {
 }
 
 /**
- * Handle clicking a NASA result card.
- * Tries to upgrade from the thumbnail to a larger image via the
- * /asset/{nasa_id} manifest endpoint, then calls setSelectedImage().
+ * Resolve the best available image URL for a NASA asset.
+ * Prefers ~large or ~medium variants from the /asset manifest;
+ * falls back to the first non-JSON item, then the thumbnail.
  *
- * @param {HTMLElement} el      - The card element (for selection highlight).
- * @param {string}      thumbUrl - Thumbnail URL as fallback.
- * @param {string}      title
- * @param {string}      nasaId
+ * @param {string} thumbUrl - Thumbnail URL (fallback).
+ * @param {string} nasaId   - NASA asset ID.
+ * @returns {Promise<string>} Resolved image URL.
  */
-async function selectNasaImage(el, thumbUrl, title, nasaId) {
-  // Highlight selected card
-  document.querySelectorAll('.img-card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-
+async function resolveNasaUrl(thumbUrl, nasaId) {
   let imgUrl = thumbUrl;
-
   try {
-    // Validate nasa_id before embedding in a URL (allowlist: alphanumeric + _ -)
     if (nasaId && /^[a-zA-Z0-9_\-]+$/.test(nasaId)) {
       const r = await fetch(`https://images-api.nasa.gov/asset/${encodeURIComponent(nasaId)}`);
       if (r.ok) {
-        const d    = await r.json();
-        const its  = d.collection?.items || [];
-
-        // Prefer ~large or ~medium variants over the thumbnail
+        const d   = await r.json();
+        const its = d.collection?.items || [];
         const lrg = its.find(i =>
           typeof i.href === 'string' &&
           i.href.startsWith('https://images-assets.nasa.gov/') &&
@@ -594,7 +597,6 @@ async function selectNasaImage(el, thumbUrl, title, nasaId) {
         if (lrg) {
           imgUrl = lrg.href;
         } else {
-          // Fall back to the first non-JSON, non-caption item
           const f = its.find(i =>
             typeof i.href === 'string' &&
             i.href.startsWith('https://images-assets.nasa.gov/') &&
@@ -605,11 +607,38 @@ async function selectNasaImage(el, thumbUrl, title, nasaId) {
         }
       }
     }
-  } catch (_) {
-    // Non-fatal: if the asset manifest request fails, we just use the thumbnail
-  }
+  } catch (_) { /* non-fatal — thumbnail is a fine fallback */ }
+  return imgUrl;
+}
 
-  await setSelectedImage(imgUrl, title);
+/**
+ * Handle clicking a NASA result card.
+ * Resolves the best image URL then starts the fetch/analysis pipeline.
+ * Does NOT open a new tab — that is handled by the per-card hover button.
+ *
+ * @param {HTMLElement} el       - The card element (for selection highlight).
+ * @param {string}      thumbUrl - Thumbnail URL as fallback.
+ * @param {string}      title
+ * @param {string}      nasaId
+ */
+async function selectNasaImage(el, thumbUrl, title, nasaId) {
+  document.querySelectorAll('.img-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+
+  const imgUrl = await resolveNasaUrl(thumbUrl, nasaId);
+
+  // Show preview immediately
+  document.getElementById('main-preview').src = imgUrl;
+  document.getElementById('preview-label').textContent =
+    String(title || 'TARGET').slice(0, 50).toUpperCase();
+  document.getElementById('analyze-section').classList.remove('hidden');
+  document.getElementById('results-section').classList.add('hidden');
+  document.getElementById('analysis-panel').classList.add('hidden');
+  hideStatus('analyze-status');
+  showStatus('analyze-status', '<span class="spinner"></span>Downloading image for analysis…');
+  document.getElementById('analyze-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  await fetchAndLoadImage(imgUrl, title);
 }
 
 
@@ -937,14 +966,15 @@ async function setSelectedImage(url, title, isDataUrl = false) {
     state.imgH           = h;
     state.selectedBase64 = b64;
     state.selectedMime   = 'image/jpeg';
-    document.getElementById('px-btn').disabled = false;
+
+    // Pixel data is ready — automatically kick off analysis
+    runPixelAnalysis();
 
   } catch (e) {
-    // All three pixel-read attempts failed.
+    // All pixel-read attempts failed (CORS / network).
     // The image is still visible in the preview (the <img> element loads fine),
-    // but getImageData() is blocked. Offer a one-click save → re-upload workflow.
+    // but getImageData() is blocked. Show a helper message.
     showCorsHelper(url);
-    document.getElementById('px-btn').disabled = true;
   }
 
   document.getElementById('analyze-section').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1079,6 +1109,10 @@ function toGray(imgData) {
  * Compute the brightness-weighted centroid (photometric center of mass).
  * Equivalent to the first moment of the luminosity distribution.
  *
+ * NOTE: When a full second-moment fit is also needed, use secondMoments()
+ * directly — it returns the centroid as part of its single-pass computation,
+ * making a separate centroid() call redundant.
+ *
  * @param   {Float32Array} g   - Grayscale pixel buffer.
  * @param   {number}       w   - Image width in pixels.
  * @param   {number}       h   - Image height in pixels.
@@ -1103,7 +1137,15 @@ function centroid(g, w, h) {
  * by brightness) has eigenvalues proportional to the squared semi-axes
  * of the best-fit ellipse.
  *
+ * Also computes the brightness-weighted centroid in the same pass,
+ * so a separate centroid() call is unnecessary when both are needed.
+ *
  * Returns:
+ *   cx    — centroid x (same as centroid().x)
+ *   cy    — centroid y (same as centroid().y)
+ *   axisA — semi-major axis length in pixels
+ *   cx    — centroid x
+ *   cy    — centroid y
  *   axisA — semi-major axis length in pixels
  *   axisB — semi-minor axis length in pixels
  *   ba    — axis ratio b/a (0 = line, 1 = circle)
@@ -1113,12 +1155,31 @@ function centroid(g, w, h) {
  * @param {Float32Array} g                   - Grayscale pixel buffer.
  * @param {number}       w                   - Width.
  * @param {number}       h                   - Height.
- * @param {number}       cx                  - Centroid x.
- * @param {number}       cy                  - Centroid y.
- * @returns {{ axisA, axisB, ba, pa, eps }}
+ * @returns {{ cx, cy, axisA, axisB, ba, pa, eps }}
  */
-function secondMoments(g, w, h, cx, cy) {
-  let Mxx = 0, Myy = 0, Mxy = 0, sw = 0;
+function secondMoments(g, w, h) {
+  // Pass 1 of 1: compute first moments (centroid) and second moments together.
+  // First we need the centroid to centre the second-moment sums, but we cannot
+  // compute centred second moments in a single literal pass without knowing cx/cy
+  // first. The standard approach is two logical passes over the same buffer:
+  //   sub-pass A: accumulate weighted sums for cx, cy (first moments)
+  //   sub-pass B: accumulate centred second moments using the cx, cy from A
+  // Both sub-passes are tight inner loops; no extra memory allocation is needed.
+
+  // Sub-pass A — first moments (centroid)
+  let sx = 0, sy = 0, sw = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const v = g[y * w + x];
+      sx += x * v; sy += y * v; sw += v;
+    }
+  }
+  if (sw === 0) return { cx: w / 2, cy: h / 2, axisA: 0, axisB: 0, ba: 1, pa: 0, eps: 0 };
+  const cx = sx / sw;
+  const cy = sy / sw;
+
+  // Sub-pass B — centred second moments
+  let Mxx = 0, Myy = 0, Mxy = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const v  = g[y * w + x];
@@ -1126,11 +1187,8 @@ function secondMoments(g, w, h, cx, cy) {
       Mxx += dx * dx * v;
       Myy += dy * dy * v;
       Mxy += dx * dy * v;
-      sw  += v;
     }
   }
-  if (sw === 0) return { axisA: 0, axisB: 0, ba: 1, pa: 0, eps: 0 };
-
   Mxx /= sw; Myy /= sw; Mxy /= sw;
 
   // Eigenvalues of the 2×2 moment matrix via the quadratic formula:
@@ -1149,12 +1207,17 @@ function secondMoments(g, w, h, cx, cy) {
   const pa    = Math.atan2(2 * Mxy, Mxx - Myy) / 2 * (180 / Math.PI);
   const paDeg = ((pa % 180) + 180) % 180; // normalise to [0°, 180°)
 
-  return { axisA, axisB, ba, pa: paDeg, eps: 1 - ba };
+  return { cx, cy, axisA, axisB, ba, pa: paDeg, eps: 1 - ba };
 }
 
 /**
  * Compute the radial brightness profile by averaging pixel luminance
  * inside concentric annular rings centred on (cx, cy).
+ *
+ * Optimisation: dy² is hoisted outside the inner x-loop, saving one
+ * multiply per pixel. The sqrt is still needed for bin assignment since
+ * bin = floor(r/step) requires knowing r — a lookup table would be faster
+ * for very large images but adds significant complexity.
  *
  * @param {Float32Array} g    - Grayscale pixel buffer.
  * @param {number}       w, h - Image dimensions.
@@ -1165,16 +1228,20 @@ function secondMoments(g, w, h, cx, cy) {
  */
 function radialProfile(g, w, h, cx, cy, bins) {
   // Maximum usable radius: largest circle that fits inside the image
-  const maxR = Math.min(cx, w - cx, cy, h - cy);
-  const step = maxR / bins;
+  const maxR   = Math.min(cx, w - cx, cy, h - cy);
+  const step   = maxR / bins;
+  const invStep = 1 / step; // precompute reciprocal to replace division with multiply
 
   const sums   = new Float64Array(bins);
   const counts = new Uint32Array(bins);
 
   for (let y = 0; y < h; y++) {
+    const dy   = y - cy;
+    const dySq = dy * dy; // hoisted — saves one multiply per pixel in the x loop
     for (let x = 0; x < w; x++) {
-      const r = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
-      const b = Math.min(bins - 1, Math.floor(r / step));
+      const dx = x - cx;
+      const r  = Math.sqrt(dx * dx + dySq);
+      const b  = Math.min(bins - 1, Math.floor(r * invStep));
       sums[b]   += g[y * w + x];
       counts[b] += 1;
     }
@@ -1192,8 +1259,16 @@ function radialProfile(g, w, h, cx, cy, bins) {
 }
 
 /**
- * Separable box blur (horizontal then vertical pass).
- * Used to produce the smoothed image needed for clumpiness (§14).
+ * Separable box blur using a sliding-window sum accumulator — O(W×H).
+ *
+ * The naïve approach visits 2r+1 neighbours per pixel per axis pass, giving
+ * O(W×H×r). The sliding-window technique instead maintains a running sum:
+ *   sum += g[leading_edge] − g[trailing_edge]
+ * so each pixel costs exactly two additions regardless of r.
+ *
+ * Boundary pixels use a smaller effective kernel that stays within the image
+ * (clamped/valid-border semantics) — the same semantic as the old code.
+ *
  * Not a true Gaussian but a good approximation at low kernel radii.
  *
  * @param {Float32Array} g    - Input grayscale buffer.
@@ -1205,27 +1280,36 @@ function boxBlur(g, w, h, r) {
   const temp = new Float32Array(w * h);
   const out  = new Float32Array(w * h);
 
-  // Horizontal pass
+  // ── Horizontal pass (rows) ─────────────────────────────────────────────────
   for (let y = 0; y < h; y++) {
+    const row = y * w;
+    let sum = 0;
+    let cnt = 0;
+    // Initialise the window covering x = [0, r]
+    for (let x = 0; x <= Math.min(r, w - 1); x++) { sum += g[row + x]; cnt++; }
     for (let x = 0; x < w; x++) {
-      let s = 0, n = 0;
-      for (let dx = -r; dx <= r; dx++) {
-        const nx = x + dx;
-        if (nx >= 0 && nx < w) { s += g[y * w + nx]; n++; }
-      }
-      temp[y * w + x] = s / n;
+      temp[row + x] = sum / cnt;
+      // Slide: add incoming right edge (if within bounds)
+      const xIn = x + r + 1;
+      if (xIn < w) { sum += g[row + xIn]; cnt++; }
+      // Remove outgoing left edge (if within bounds)
+      const xOut = x - r;
+      if (xOut >= 0) { sum -= g[row + xOut]; cnt--; }
     }
   }
 
-  // Vertical pass over the horizontal-pass result
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let s = 0, n = 0;
-      for (let dy = -r; dy <= r; dy++) {
-        const ny = y + dy;
-        if (ny >= 0 && ny < h) { s += temp[ny * w + x]; n++; }
-      }
-      out[y * w + x] = s / n;
+  // ── Vertical pass (columns) over horizontal-pass result ───────────────────
+  for (let x = 0; x < w; x++) {
+    let sum = 0;
+    let cnt = 0;
+    // Initialise the window covering y = [0, r]
+    for (let y = 0; y <= Math.min(r, h - 1); y++) { sum += temp[y * w + x]; cnt++; }
+    for (let y = 0; y < h; y++) {
+      out[y * w + x] = sum / cnt;
+      const yIn = y + r + 1;
+      if (yIn < h) { sum += temp[yIn * w + x]; cnt++; }
+      const yOut = y - r;
+      if (yOut >= 0) { sum -= temp[yOut * w + x]; cnt--; }
     }
   }
 
@@ -1287,41 +1371,43 @@ function sobelEdges(g, w, h) {
  *   n ≈ 4.0  — de Vaucouleurs law (ellipticals)
  *   n > 4    — Super-de-Vaucouleurs (cD galaxies)
  *
- * @param {Float64Array} profile - Mean brightness per annular bin.
- * @param {number[]}     radii   - Bin mid-point radii in pixels.
+ * @param {Float64Array} profile    - Mean brightness per annular bin.
+ * @param {number[]}     radii      - Bin mid-point radii in pixels.
+ * @param {number}       totalFlux  - Pre-computed sum of profile (avoids duplicate sum with concentration()).
  * @returns {{ n: number, re: number, r2: number }}
  *   n  — best-fit Sérsic index
  *   re — half-light radius in pixels
  *   r2 — R² goodness-of-fit for the chosen n
  */
-function sersicFit(profile, radii) {
+function sersicFit(profile, radii, totalFlux) {
   const N = profile.length;
 
   // Find the half-light radius: first bin where cumulative flux ≥ 50% of total
-  let total = 0;
-  for (let i = 0; i < N; i++) total += profile[i];
   let cum = 0, reIdx = 0;
   for (let i = 0; i < N; i++) {
     cum += profile[i];
-    if (cum >= total * 0.5) { reIdx = i; break; }
+    if (cum >= totalFlux * 0.5) { reIdx = i; break; }
   }
   const re = radii[reIdx] || 1;
 
   const nCandidates = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 6.0];
+  // Pre-allocate reusable buffers — avoids 16 array allocations (2 per candidate)
+  const xs = new Float64Array(N);
+  const ys = new Float64Array(N);
   let bestN = 1, bestR2 = -Infinity;
 
   for (const nc of nCandidates) {
-    const xs = [], ys = [];
+    let n2 = 0;
     for (let i = 1; i < N; i++) {
       if (profile[i] > 0.5 && radii[i] > 0) {
-        xs.push(Math.pow(radii[i] / re, 1 / nc));
-        ys.push(Math.log(profile[i]));
+        xs[n2] = Math.pow(radii[i] / re, 1 / nc);
+        ys[n2] = Math.log(profile[i]);
+        n2++;
       }
     }
-    if (xs.length < 4) continue;
+    if (n2 < 4) continue;
 
     // Ordinary least-squares slope and intercept
-    const n2 = xs.length;
     let sx = 0, sy = 0, sxy = 0, sx2 = 0;
     for (let i = 0; i < n2; i++) { sx += xs[i]; sy += ys[i]; sxy += xs[i]*ys[i]; sx2 += xs[i]*xs[i]; }
     const slope = (n2*sxy - sx*sy) / (n2*sx2 - sx*sx);
@@ -1355,17 +1441,22 @@ function sersicFit(profile, radii) {
  *
  * @param {Float64Array} profile
  * @param {number[]}     radii
+ * @param {number}       [preTotal] - Pre-computed profile sum (optional; avoids duplicate sum).
  * @returns {{ C: number, r20: number, r80: number }}
  */
-function concentration(profile, radii) {
-  let total = 0;
-  for (const v of profile) total += v;
+function concentration(profile, radii, preTotal) {
+  let total = preTotal !== undefined ? preTotal : 0;
+  if (preTotal === undefined) for (const v of profile) total += v;
 
-  let cum = 0, r20 = radii[0], r80 = radii[0];
+  let cum = 0;
+  let r20 = radii[0], r80 = radii[radii.length - 1];
+  let found20 = false, found80 = false;
+
   for (let i = 0; i < profile.length; i++) {
     cum += profile[i];
-    if (cum / total >= 0.2 && r20 === radii[0]) r20 = radii[i];
-    if (cum / total >= 0.8 && r80 === radii[0]) r80 = radii[i];
+    const frac = cum / total;
+    if (!found20 && frac >= 0.2) { r20 = radii[i]; found20 = true; }
+    if (!found80 && frac >= 0.8) { r80 = radii[i]; found80 = true; break; }
   }
 
   const C = r20 > 0 ? 5 * Math.log10(r80 / r20) : 0;
@@ -1417,24 +1508,30 @@ function asymmetry(g, w, h, cx, cy) {
  * @param {Float32Array} blurred - Box-blurred version of g.
  * @param {number}       cx, cy  - Centroid.
  * @param {number}       re      - Half-light radius (defines galaxy region).
+ * @param {number}       w       - Image width in pixels.
+ * @param {number}       h       - Image height in pixels.
  * @returns {number} S ≥ 0
  */
-function clumpiness(g, blurred, cx, cy, re) {
+function clumpiness(g, blurred, cx, cy, re, w, h) {
   let sr = 0, so = 0;
   const re2  = re * re;
   const cxi  = Math.round(cx), cyi = Math.round(cy);
-  // Approximate width from buffer length (ok for this metric; true w is in state)
-  const w2 = Math.round(Math.sqrt(g.length));
+  const r3sq = re2 * 9; // (3·rₑ)² — skip pixels beyond this
 
-  for (let i = 0; i < g.length; i++) {
-    const x  = i % w2;
-    const y  = Math.floor(i / w2);
-    const d2 = (x - cxi) ** 2 + (y - cyi) ** 2;
-    if (d2 > re2 * 9) continue; // skip pixels beyond 3·rₑ
+  for (let y = 0; y < h; y++) {
+    const dy = y - cyi;
+    const dySq = dy * dy;
+    if (dySq > r3sq) continue; // skip entire row early
+    for (let x = 0; x < w; x++) {
+      const dx = x - cxi;
+      const d2 = dx * dx + dySq;
+      if (d2 > r3sq) continue; // skip pixels beyond 3·rₑ
 
-    const res = g[i] - blurred[i];
-    if (res > 0) sr += res; // only positive residuals count as clumps
-    so += g[i];
+      const i   = y * w + x;
+      const res = g[i] - blurred[i];
+      if (res > 0) sr += res; // only positive residuals count as clumps
+      so += g[i];
+    }
   }
 
   return so > 0 ? sr / so : 0;
@@ -1447,6 +1544,8 @@ function clumpiness(g, blurred, cx, cy, re) {
  * A bar causes the inner region to be much more elongated than the outer
  * disk, with the elongation axis aligned to within ~30° between the two.
  *
+ * Uses squared-distance comparisons to avoid one Math.sqrt() call per pixel.
+ *
  * Returns barScore: 0 = no bar, >0.22 = moderate bar, >0.35 = strong bar.
  *
  * @param {Float32Array} g      - Grayscale buffer.
@@ -1456,20 +1555,22 @@ function clumpiness(g, blurred, cx, cy, re) {
  * @returns {{ barScore, innerBA, outerBA, innerPA, outerPA, paDiff }}
  */
 function detectBar(g, w, h, cx, cy, re) {
-  const r1 = 0.4 * re; // inner ring boundary
-  const r2 = 1.5 * re; // outer ring boundary
+  const r1sq = (0.4 * re) * (0.4 * re); // inner ring boundary squared
+  const r2sq = (1.5 * re) * (1.5 * re); // outer ring boundary squared
 
   let iMxx=0, iMyy=0, iMxy=0, iSw=0;
   let oMxx=0, oMyy=0, oMxy=0, oSw=0;
 
   for (let y = 0; y < h; y++) {
+    const dy  = y - cy;
+    const dySq = dy * dy;
     for (let x = 0; x < w; x++) {
       const v  = g[y * w + x];
-      const r  = Math.sqrt((x-cx)**2 + (y-cy)**2);
-      const dx = x - cx, dy = y - cy;
-      if (r < r1) {
+      const dx = x - cx;
+      const rSq = dx * dx + dySq;
+      if (rSq < r1sq) {
         iMxx += dx*dx*v; iMyy += dy*dy*v; iMxy += dx*dy*v; iSw += v;
-      } else if (r < r2) {
+      } else if (rSq < r2sq) {
         oMxx += dx*dx*v; oMyy += dy*dy*v; oMxy += dx*dy*v; oSw += v;
       }
     }
@@ -1519,6 +1620,9 @@ function detectBar(g, w, h, cx, cy, re) {
  *   0.35–0.5 → moderate spiral
  *   < 0.2 → elliptical / S0 / irregular
  *
+ * Uses squared-distance comparisons for the ring filter, calling Math.sqrt()
+ * only on pixels that pass the ring test (to compute their angle via atan2).
+ *
  * @param {Float32Array} edges  - Sobel edge magnitude buffer.
  * @param {number}       w, h   - Dimensions.
  * @param {number}       cx, cy - Centroid.
@@ -1530,15 +1634,26 @@ function spiralIndicator(edges, w, h, cx, cy, re) {
   const rTarget = 0.8 * re;           // ring radius where arms are sampled
   const rWidth  = re * 0.25;          // ring half-width
 
+  // Pre-compute squared bounds so ring membership avoids sqrt for most pixels
+  const rInSq  = (rTarget - rWidth) * (rTarget - rWidth);
+  const rOutSq = (rTarget + rWidth) * (rTarget + rWidth);
+
   const bins   = new Float64Array(BINS);
   const counts = new Uint32Array(BINS);
 
   for (let y = 0; y < h; y++) {
+    const dy   = y - cy;
+    const dySq = dy * dy;
+    // Quick row-level cull: entire row is outside the outer ring radius
+    if (dySq > rOutSq) continue;
     for (let x = 0; x < w; x++) {
-      const r = Math.sqrt((x-cx)**2 + (y-cy)**2);
-      if (Math.abs(r - rTarget) > rWidth) continue;
+      const dx  = x - cx;
+      const rSq = dx * dx + dySq;
+      // Reject pixels outside the ring using squared comparison (no sqrt needed)
+      if (rSq < rInSq || rSq > rOutSq) continue;
 
-      const angle = ((Math.atan2(y-cy, x-cx) * 180/Math.PI) + 360) % 360;
+      // Only pixels inside the ring reach here — compute angle for binning
+      const angle = ((Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
       const b     = Math.floor(angle / (360 / BINS)) % BINS;
       bins[b]   += edges[y * w + x];
       counts[b] += 1;
@@ -1672,6 +1787,8 @@ function classify(m) {
 /**
  * Paint a grayscale Float32 buffer to a named <canvas> element.
  * An optional mapping function transforms raw luminance to display value.
+ * Also stores a reference to the last-rendered canvas for reuse by
+ * renderIsoCanvas(), which needs the same background without reprocessing.
  *
  * @param {string}       id    - Canvas element id.
  * @param {Float32Array} g     - Source grayscale buffer.
@@ -1679,6 +1796,8 @@ function classify(m) {
  * @param {Function}     [mapFn] - (value: number, index: number) → [0,255].
  *                                 If omitted, values are clamped as-is.
  */
+let _lastGrayCanvas = null; // cached for renderIsoCanvas background reuse
+
 function renderGrayCanvas(id, g, w, h, mapFn) {
   const cv = document.getElementById(id);
   if (!cv) return;
@@ -1691,6 +1810,8 @@ function renderGrayCanvas(id, g, w, h, mapFn) {
     data.data[i*4+3] = 255; // fully opaque
   }
   ctx.putImageData(data, 0, 0);
+  // Cache the contrast-stretched canvas (id 'cv-contrast') for iso overlay reuse
+  if (id === 'cv-contrast') _lastGrayCanvas = cv;
 }
 
 /**
@@ -1715,13 +1836,15 @@ function asinhStretch(g) {
 
 /**
  * Render the isophote overlay canvas.
- * Draws the asinh-stretched galaxy image as background, then overlays:
+ * Draws the asinh-stretched galaxy image as background (reusing the already-
+ * rendered contrast canvas via drawImage — no pixel rebuild needed), then
+ * overlays:
  *   - Three concentric ellipses at r₂₀ (blue), rₑ (amber), r₈₀ (teal)
  *   - A centroid crosshair (amber)
  *   - A dashed line along the major axis (PA indicator)
  *
  * @param {string}       id             - Canvas element id.
- * @param {Float32Array} g              - Grayscale pixel buffer.
+ * @param {Float32Array} g              - Grayscale pixel buffer (kept for fallback).
  * @param {number}       w, h           - Image dimensions.
  * @param {number}       cx, cy         - Centroid.
  * @param {number}       axisA, axisB   - Semi-axes from second moments.
@@ -1734,15 +1857,21 @@ function renderIsoCanvas(id, g, w, h, cx, cy, axisA, axisB, pa, r20, r80) {
   cv.width = w; cv.height = h;
   const ctx = cv.getContext('2d');
 
-  // Background: asinh-stretched grayscale
-  const mapFn = asinhStretch(g);
-  const data  = ctx.createImageData(w, h);
-  for (let i = 0; i < w * h; i++) {
-    const v = mapFn(g[i]);
-    data.data[i*4] = data.data[i*4+1] = data.data[i*4+2] = v;
-    data.data[i*4+3] = 255;
+  // Background: reuse the already-rendered contrast canvas (a single drawImage
+  // replaces the O(W×H) pixel-rebuild that was here before).
+  if (_lastGrayCanvas && _lastGrayCanvas.width === w && _lastGrayCanvas.height === h) {
+    ctx.drawImage(_lastGrayCanvas, 0, 0);
+  } else {
+    // Fallback: compute the stretch inline if the cached canvas is unavailable
+    const mapFn = asinhStretch(g);
+    const data  = ctx.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+      const v = mapFn(g[i]);
+      data.data[i*4] = data.data[i*4+1] = data.data[i*4+2] = v;
+      data.data[i*4+3] = 255;
+    }
+    ctx.putImageData(data, 0, 0);
   }
-  ctx.putImageData(data, 0, 0);
 
   const paRad = pa * Math.PI / 180;
 
@@ -1814,7 +1943,8 @@ function renderProfileCanvas(id, profile, radii, re) {
   const cw  = W - pad.l - pad.r;
   const ch  = H - pad.t - pad.b;
 
-  const maxV = Math.max(...profile.filter(v => v > 0), 1);
+  let maxV = 1;
+  for (const v of profile) if (v > maxV) maxV = v;
   const maxR = radii[radii.length - 1];
 
   // Horizontal grid lines + Y-axis labels
@@ -1896,7 +2026,6 @@ async function runPixelAnalysis() {
     return;
   }
 
-  document.getElementById('px-btn').disabled = true;
   document.getElementById('analysis-panel').classList.remove('hidden');
   document.getElementById('results-section').classList.add('hidden');
   clearConsole();
@@ -1908,12 +2037,16 @@ async function runPixelAnalysis() {
   clog('Source: ' + esc(String(state.selectedTitle || '').slice(0, 80)), 'info');
   await yld();
 
-  // ── Step 1: Grayscale ──────────────────────────────────────
-  clog('Converting to luminance-weighted grayscale (Rec.709)…', 'step');
+  // ── Step 1: Grayscale + stats in one pass ──────────────────
+  clog('Converting to luminance-weighted grayscale (Rec.709) and computing stats…', 'step');
   await yld();
   const g = toGray(imgData);
   let gmin = 255, gmax = 0, gsum = 0;
-  for (const v of g) { if (v < gmin) gmin = v; if (v > gmax) gmax = v; gsum += v; }
+  for (const v of g) {
+    if (v < gmin) gmin = v;
+    if (v > gmax) gmax = v;
+    gsum += v;
+  }
   const gmean = gsum / g.length;
   let variance = 0;
   for (const v of g) variance += (v - gmean) ** 2;
@@ -1933,10 +2066,13 @@ async function runPixelAnalysis() {
   clog('Contrast stretch applied — low-surface-brightness features now visible', 'ok');
   await yld();
 
-  // ── Step 3: Centroid ───────────────────────────────────────
-  clog('Computing brightness-weighted photometric centroid…', 'step');
+  // ── Steps 3 & 4 combined: Centroid + Second moments ────────
+  // secondMoments() computes the centroid (first moments) in a sub-pass then
+  // uses it for the centred second moments — one function call, two sub-passes,
+  // no separate centroid() call needed.
+  clog('Computing brightness-weighted centroid and fitting elliptical isophotes…', 'step');
   await yld();
-  const { x: cx, y: cy } = centroid(g, W, H);
+  const { cx, cy, axisA, axisB, ba, pa, eps } = secondMoments(g, W, H);
   const offX = (cx - W/2).toFixed(1);
   const offY = (cy - H/2).toFixed(1);
   clogMetric('Centroid position', `(${cx.toFixed(1)}, ${cy.toFixed(1)})`, 'px');
@@ -1944,12 +2080,6 @@ async function runPixelAnalysis() {
   if (Math.abs(cx - W/2) > W * 0.15 || Math.abs(cy - H/2) > H * 0.15) {
     clog('⚠ Centroid far from image centre — galaxy may not be centred in the frame', 'warn');
   }
-  await yld();
-
-  // ── Step 4: Second moments / ellipse ──────────────────────
-  clog('Fitting elliptical isophotes via image second moments…', 'step');
-  await yld();
-  const { axisA, axisB, ba, pa, eps } = secondMoments(g, W, H, cx, cy);
   const eClass = Math.min(7, Math.round(10 * eps));
   clogMetric('Semi-major axis a',  axisA.toFixed(1), 'px');
   clogMetric('Semi-minor axis b',  axisB.toFixed(1), 'px');
@@ -1971,10 +2101,14 @@ async function runPixelAnalysis() {
   clogMetric('Outer brightness',     profile[BINS-1].toFixed(2), 'DN');
   await yld();
 
+  // Pre-compute total profile flux once — shared by sersicFit and concentration
+  let totalFlux = 0;
+  for (const v of profile) totalFlux += v;
+
   // ── Step 6: Sérsic fitting ─────────────────────────────────
   clog('Fitting Sérsic surface brightness profile…', 'step');
   await yld();
-  const { n: sersicN, re, r2 } = sersicFit(profile, radii);
+  const { n: sersicN, re, r2 } = sersicFit(profile, radii, totalFlux);
   clogMetric('Best-fit Sérsic index n', sersicN.toFixed(2));
   clogMetric('Half-light radius rₑ',   re.toFixed(1), 'px');
   clogMetric('Fit quality R²',          r2.toFixed(3));
@@ -1987,7 +2121,7 @@ async function runPixelAnalysis() {
   // ── Step 7: Concentration ──────────────────────────────────
   clog('Computing concentration index C = 5·log₁₀(r₈₀ / r₂₀)…', 'step');
   await yld();
-  const { C, r20, r80 } = concentration(profile, radii);
+  const { C, r20, r80 } = concentration(profile, radii, totalFlux);
   clogMetric('r₂₀ (20% enclosed flux)', r20.toFixed(1), 'px');
   clogMetric('r₈₀ (80% enclosed flux)', r80.toFixed(1), 'px');
   clogMetric('Concentration C',          C.toFixed(3));
@@ -2014,7 +2148,7 @@ async function runPixelAnalysis() {
   await yld();
   const blurRadius = Math.max(2, Math.round(re * 0.1));
   const blurred    = boxBlur(g, W, H, blurRadius);
-  const S          = clumpiness(g, blurred, cx, cy, re);
+  const S          = clumpiness(g, blurred, cx, cy, re, W, H);
   clogMetric('Box blur kernel radius', blurRadius, 'px');
   clogMetric('Clumpiness S', S.toFixed(4));
   if      (S < 0.05) clog('S < 0.05 → smooth — elliptical / S0', 'data');
@@ -2105,7 +2239,6 @@ async function runPixelAnalysis() {
   };
 
   renderPixelResults(state.pixelResult);
-  document.getElementById('px-btn').disabled = false;
 }
 
 
@@ -2274,7 +2407,7 @@ function resetAll() {
   });
 
   // Hide all contextual panels
-  ['analyze-section', 'analysis-panel', 'results-section', 'ned-result'].forEach(id =>
+  ['analyze-section', 'analysis-panel', 'results-section'].forEach(id =>
     document.getElementById(id).classList.add('hidden')
   );
 
@@ -2291,7 +2424,7 @@ function resetAll() {
   document.querySelectorAll('.img-card').forEach(c => c.classList.remove('selected'));
 
   // Clear all status messages
-  ['nasa-status', 'ned-status', 'hips-status', 'analyze-status'].forEach(hideStatus);
+  ['nasa-status', 'analyze-status'].forEach(hideStatus);
 
   // Clear console log
   clearConsole();
