@@ -40,34 +40,62 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="blackhole-overrides.css">
 </head>
 <body>
-<div class="wrap">
 
-  <!-- ═══════════════════════════════════════════
-       HEADER
-  ═══════════════════════════════════════════ -->
-  <div class="hdr">
-    <svg width="38" height="38" viewBox="0 0 38 38" fill="none" aria-hidden="true">
-      <circle cx="19" cy="19" r="15" stroke="#EF9F27" stroke-width="1"/>
-      <ellipse cx="19" cy="19" rx="15" ry="5" stroke="#BA7517" stroke-width=".7" opacity=".65"/>
-      <circle cx="19" cy="19" r="2.8" fill="#EF9F27"/>
-      <circle cx="6"  cy="14" r=".9"  fill="#EF9F27" opacity=".35"/>
-      <circle cx="33" cy="24" r=".7"  fill="#EF9F27" opacity=".28"/>
-    </svg>
+<!-- ═══════════════════════════════════════════
+     BLACK HOLE BACKGROUND
+     WebGL canvas — fixed full-viewport, rendered behind all content.
+     Soft right-side darkening keeps the reading column legible.
+═══════════════════════════════════════════ -->
+<canvas id="blackhole-canvas" aria-hidden="true"></canvas>
+<div class="bh-overlay" aria-hidden="true"></div>
 
-    <div class="hdr-text">
-      <strong>Galaxy Morphology Classifier</strong>
-      Pixel Analysis Engine · NASA Image Library · NED Catalog · hips2fits
+<!-- ═══════════════════════════════════════════
+     LEFT SIDEBAR — brand + global actions
+     Holds the app title, subtitle and the two header buttons.
+═══════════════════════════════════════════ -->
+<aside class="bh-sidebar" aria-label="Brand and global actions">
+  <div class="bh-sidebar-inner">
+    <div class="bh-brand">
+      <svg width="42" height="42" viewBox="0 0 38 38" fill="none" aria-hidden="true">
+        <circle cx="19" cy="19" r="15" stroke="#EF9F27" stroke-width="1"/>
+        <ellipse cx="19" cy="19" rx="15" ry="5" stroke="#BA7517" stroke-width=".7" opacity=".65"/>
+        <circle cx="19" cy="19" r="2.8" fill="#EF9F27"/>
+        <circle cx="6"  cy="14" r=".9"  fill="#EF9F27" opacity=".35"/>
+        <circle cx="33" cy="24" r=".7"  fill="#EF9F27" opacity=".28"/>
+      </svg>
+      <div class="bh-brand-text">
+        <strong>Galaxy Morphology Classifier</strong>
+        <span class="bh-brand-sub">Pixel Analysis Engine</span>
+      </div>
     </div>
 
-    <div class="hdr-btns">
-      <button class="icon-btn" onclick="openModal('methodology')">📖 How It Works</button>
-      <button class="icon-btn" onclick="openModal('security')">🔒 Security</button>
+    <div class="bh-data-sources">
+      <div class="bh-data-sources-lbl">DATA SOURCES</div>
+      <ul>
+        <li>NASA Image Library</li>
+        <li>NED Catalog</li>
+        <li>hips2fits</li>
+      </ul>
+    </div>
+
+    <div class="bh-side-actions">
+      <button class="icon-btn" onclick="openModal('named')">Named Galaxies</button>
+      <button class="icon-btn" onclick="openModal('travel')">Relativistic Travel</button>
+      <button class="icon-btn" onclick="openModal('schwarz')">Schwarzschild Calculator</button>
+      <button class="icon-btn" onclick="openModal('methodology')">How It Works</button>
+      <button class="icon-btn" onclick="openModal('security')">Security</button>
     </div>
   </div>
+</aside>
 
-  <div class="sep"></div>
+<div class="wrap">
+
+  <!-- ══════════════════════════════════════════
+       (Header moved to left sidebar)
+  ══════════════════════════════════════════ -->
 
   <!-- ═══════════════════════════════════════════
        INPUT TABS
@@ -88,14 +116,12 @@
         onkeydown="if(event.key==='Enter') nasaSearch()"
         aria-label="NASA image search query"
       >
-      <button class="btn btn-amber" onclick="nasaSearch()" id="nasa-btn">Search ↗</button>
+      <button class="btn btn-amber" onclick="nasaSearch()" id="nasa-btn">Search</button>
     </div>
     <div class="status" id="nasa-status" role="status"></div>
     <div id="nasa-grid" class="results-grid"></div>
-    <div id="nasa-pager" class="pager hidden">
-      <button class="btn btn-sm" id="nasa-prev" onclick="nasaPage(-1)">← Prev</button>
-      <span class="pager-info" id="nasa-pager-info"></span>
-      <button class="btn btn-sm" id="nasa-next" onclick="nasaPage(1)">Next →</button>
+    <div id="nasa-sentinel" class="results-sentinel" aria-hidden="true">
+      <span class="sentinel-text">Scroll to load more</span>
     </div>
   </div>
 
@@ -123,7 +149,7 @@
   <div id="analyze-section" class="hidden" style="margin-top:20px;">
     <div class="sep"></div>
     <div class="preview-wrap">
-      <img id="main-preview" src="" alt="Selected galaxy image">
+      <img id="main-preview" alt="Selected galaxy image">
       <span class="preview-tag" id="preview-label">TARGET</span>
     </div>
     <div class="status" id="analyze-status" role="status"></div>
@@ -247,7 +273,7 @@
     <div id="raw-json"></div>
 
     <button class="btn btn-sm" style="width:100%;margin-top:16px;" onclick="resetAll()">
-      ↩ Analyze another galaxy
+      Analyze another galaxy
     </button>
   </div>
 
@@ -255,13 +281,190 @@
 
 
 <!-- ═══════════════════════════════════════════
+     NAMED GALAXIES MODAL
+     Curated catalog of famous galaxies. Clicking a card
+     prefills the NASA Image Library search and runs it.
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-named" role="dialog" aria-modal="true" aria-label="Named galaxies catalog">
+  <div class="modal named-modal">
+    <button class="modal-close" onclick="closeModal('named')" aria-label="Close">Close</button>
+
+    <h2>Named Galaxies</h2>
+    <div class="modal-sub">
+      A curated index of well-known galaxies with their Hubble morphology, catalog identifiers and a one-line note. Click any entry to load NASA imagery and run pixel analysis.
+    </div>
+
+    <div class="named-toolbar">
+      <input type="text" id="named-filter" class="named-filter" placeholder="Filter by name, catalog, or type…" aria-label="Filter named galaxies">
+      <span class="named-count" id="named-count"></span>
+    </div>
+
+    <div class="named-body" id="named-body">
+      <!-- populated by renderNamedGalaxies() in app.js -->
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     RELATIVISTIC TRAVEL CALCULATOR MODAL
+     Constant-velocity journey through flat spacetime.
+     Computes coordinate time (Earth frame), proper time
+     (ship frame), Lorentz factor γ, and the
+     length-contracted distance the ship would measure.
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-travel" role="dialog" aria-modal="true" aria-label="Relativistic travel calculator">
+  <div class="modal calc-modal">
+    <button class="modal-close" onclick="closeModal('travel')" aria-label="Close">Close</button>
+
+    <h2>Relativistic Travel</h2>
+    <div class="modal-sub">
+      Compute the time required to traverse a given distance at a constant fraction of the speed of light, accounting for special-relativistic time dilation and length contraction. Coordinate time (Earth frame) and proper time (ship frame) diverge sharply as v approaches c.
+    </div>
+
+    <div class="calc-body">
+
+      <div class="calc-field">
+        <div class="calc-field-row">
+          <label for="travel-v" class="calc-label">Speed</label>
+          <div class="calc-input-wrap">
+            <input type="number" id="travel-v" class="calc-input" step="0.0001" min="0" max="0.999999" value="0.5">
+            <span class="calc-unit">× c</span>
+          </div>
+        </div>
+        <div class="calc-presets" id="travel-v-presets">
+          <button type="button" data-v="0.01">1% c</button>
+          <button type="button" data-v="0.1">10% c</button>
+          <button type="button" data-v="0.5">50% c</button>
+          <button type="button" data-v="0.9">90% c</button>
+          <button type="button" data-v="0.99">99% c</button>
+          <button type="button" data-v="0.999">99.9% c</button>
+          <button type="button" data-v="0.99999">99.999% c</button>
+        </div>
+      </div>
+
+      <div class="calc-field">
+        <div class="calc-field-row">
+          <label for="travel-d" class="calc-label">Distance</label>
+          <div class="calc-input-wrap">
+            <input type="number" id="travel-d" class="calc-input" step="any" min="0" value="4.2465">
+            <select id="travel-d-unit" class="calc-unit-select">
+              <option value="m">m</option>
+              <option value="km">km</option>
+              <option value="AU">AU</option>
+              <option value="ly" selected>ly</option>
+              <option value="kly">kly</option>
+              <option value="Mly">Mly</option>
+            </select>
+          </div>
+        </div>
+        <div class="calc-presets" id="travel-d-presets">
+          <!-- populated by app.js -->
+        </div>
+      </div>
+
+      <div class="calc-results" id="travel-results">
+        <div class="calc-result">
+          <div class="calc-result-label">Lorentz factor (γ)</div>
+          <div class="calc-result-value" id="travel-r-gamma">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Coordinate time · Earth frame</div>
+          <div class="calc-result-value" id="travel-r-t">—</div>
+        </div>
+        <div class="calc-result calc-result-highlight">
+          <div class="calc-result-label">Proper time · Ship frame</div>
+          <div class="calc-result-value" id="travel-r-tau">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Contracted distance · Ship frame</div>
+          <div class="calc-result-value" id="travel-r-d">—</div>
+        </div>
+      </div>
+
+      <div class="calc-narrative" id="travel-narrative">—</div>
+
+      <div class="calc-footnote">
+        Assumes a constant velocity through flat (Minkowski) spacetime. Real interstellar travel requires acceleration / deceleration phases; in that case the proper time becomes shorter still (e.g. a 1-g constant-acceleration trip to Andromeda is ~28 ship-years).
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     SCHWARZSCHILD CALCULATOR MODAL
+     For any mass M, compute the Schwarzschild radius
+     (event-horizon radius for a non-rotating BH) and the
+     critical density to which the mass must be compressed
+     to collapse into a black hole.
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-schwarz" role="dialog" aria-modal="true" aria-label="Schwarzschild calculator">
+  <div class="modal calc-modal">
+    <button class="modal-close" onclick="closeModal('schwarz')" aria-label="Close">Close</button>
+
+    <h2>Schwarzschild Calculator</h2>
+    <div class="modal-sub">
+      For any mass M, compute the Schwarzschild radius r<sub>s</sub> = 2GM/c² (the event-horizon radius of a non-rotating black hole) and the critical density to which the mass must be compressed for gravitational collapse to form a black hole.
+    </div>
+
+    <div class="calc-body">
+
+      <div class="calc-field">
+        <div class="calc-field-row">
+          <label for="schwarz-m" class="calc-label">Mass</label>
+          <div class="calc-input-wrap">
+            <input type="number" id="schwarz-m" class="calc-input" step="any" min="0" value="1">
+            <select id="schwarz-m-unit" class="calc-unit-select">
+              <option value="kg">kg</option>
+              <option value="t">tonnes</option>
+              <option value="M_earth">M⊕</option>
+              <option value="M_sun" selected>M☉</option>
+            </select>
+          </div>
+        </div>
+        <div class="calc-presets" id="schwarz-presets">
+          <!-- populated by app.js -->
+        </div>
+      </div>
+
+      <div class="calc-results" id="schwarz-results">
+        <div class="calc-result calc-result-highlight">
+          <div class="calc-result-label">Schwarzschild radius (r<sub>s</sub>)</div>
+          <div class="calc-result-value" id="schwarz-r-rs">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Event-horizon diameter</div>
+          <div class="calc-result-value" id="schwarz-r-d">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Critical density (M ÷ Schwarzschild volume)</div>
+          <div class="calc-result-value" id="schwarz-r-rho">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Comparison</div>
+          <div class="calc-result-value" id="schwarz-r-comp">—</div>
+        </div>
+      </div>
+
+      <div class="calc-narrative" id="schwarz-narrative">—</div>
+
+      <div class="calc-footnote">
+        Formulae: r<sub>s</sub> = 2GM/c² · V = ⁴⁄₃πr<sub>s</sub>³ · ρ<sub>crit</sub> = 3c⁶ / (32πG³M²). Density falls inversely as M² — supermassive black holes have surprisingly low average densities (Sgr A*'s is ~10⁶ kg/m³; M87*'s is below water).
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
      METHODOLOGY MODAL
 ═══════════════════════════════════════════ -->
 <div class="modal-overlay hidden" id="modal-methodology" role="dialog" aria-modal="true" aria-label="How the classifier works">
   <div class="modal meth-modal">
-    <button class="modal-close" onclick="closeModal('methodology')" aria-label="Close">✕ Close</button>
+    <button class="modal-close" onclick="closeModal('methodology')" aria-label="Close">Close</button>
 
-    <h2>📖 How It Works</h2>
+    <h2>How It Works</h2>
     <div class="modal-sub">
       A plain-language guide to the pixel analysis pipeline — what each step measures, why it matters, and how the final classification is reached.
     </div>
@@ -566,10 +769,10 @@
 
 <div class="modal-overlay hidden" id="modal-security" role="dialog" aria-modal="true" aria-label="Security considerations">
   <div class="modal">
-    <button class="modal-close" onclick="closeModal('security')" aria-label="Close">✕ Close</button>
-    <h2>🔒 Security Considerations</h2>
+    <button class="modal-close" onclick="closeModal('security')" aria-label="Close">Close</button>
+    <h2>Security Considerations</h2>
     <div class="modal-sub">
-      Full audit of this app's security posture. Items marked ✓ Fixed have been mitigated in this build.
+      Full audit of this app's security posture. Items marked Fixed have been mitigated in this build.
     </div>
 
     <div class="sec-item">
@@ -644,7 +847,26 @@
 </div><!-- /modal-overlay -->
 
 
+<!-- ═══════════════════════════════════════════
+     BACK-TO-TOP BUTTON
+     Floating pill in the bottom-right corner. Visible only
+     while the Search tab is active. Click jumps the
+     viewport to the top instantly (no smooth scroll).
+     Placed BEFORE the scripts so it is in the DOM when
+     app.js's initScrollTopBtn IIFE runs.
+═══════════════════════════════════════════ -->
+<button id="scroll-top-btn" class="scroll-top-btn" type="button" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" width="14" height="14" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M12 19V5"></path>
+    <path d="M5 12l7-7 7 7"></path>
+  </svg>
+  <span>Back to top</span>
+</button>
+
 <!-- app.js loaded at end of body so the DOM is fully parsed before any JS runs -->
 <script src="app.js"></script>
+
+<!-- black hole background renderer -->
+<script src="blackhole.js"></script>
 </body>
 </html>

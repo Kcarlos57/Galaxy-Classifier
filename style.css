@@ -140,7 +140,7 @@ body {
   font-weight:    600;
 }
 
-/* Container for header action buttons (e.g. 🔒 Security) */
+/* Container for header action buttons (e.g. Security) */
 .hdr-btns {
   margin-left: auto; /* push to the far right */
   display:     flex;
@@ -1192,7 +1192,7 @@ body {
   font-family: var(--sans);
 }
 
-/* Mitigation note — prepends "✓ Fixed: " via CSS */
+/* Mitigation note — prepends "Fixed: " via CSS */
 .sec-fix {
   font-family: var(--sans);
   font-size:  13px;
@@ -1201,7 +1201,7 @@ body {
 }
 
 .sec-fix::before {
-  content: "✓ Fixed: ";
+  content: "Fixed: ";
 }
 
 

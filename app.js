@@ -130,9 +130,11 @@ const state = {
   tab: 'search',
 
   /** NASA Image Library pagination */
-  nasaPage:  1,
-  nasaTotal: 0,
-  nasaQuery: '',
+  nasaPage:    1,
+  nasaTotal:   0,
+  nasaQuery:   '',
+  nasaHasMore: false,
+  nasaLoading: false,
 
   /** URL of the image currently shown in the preview pane */
   selectedUrl:   null,
@@ -183,8 +185,14 @@ const state = {
  * @param {string} id
  */
 function openModal(id) {
+  // Lazy-render the named-galaxies catalog the first time it's opened.
+  if (id === 'named') ensureNamedGalaxiesRendered();
   document.getElementById('modal-' + id).classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+  // Freeze the WebGL black-hole shader while a fullscreen overlay covers
+  // it — this kills the lag caused by stacked backdrop-filters re-blurring
+  // a live-rendering canvas every frame.
+  if (window.__bhSetPaused) window.__bhSetPaused(true);
 }
 
 /**
@@ -194,6 +202,10 @@ function openModal(id) {
 function closeModal(id) {
   document.getElementById('modal-' + id).classList.add('hidden');
   document.body.style.overflow = '';
+  // Resume shader rendering once no modal is still open.
+  if (!document.querySelector('.modal-overlay:not(.hidden)') && window.__bhSetPaused) {
+    window.__bhSetPaused(false);
+  }
 }
 
 /**
@@ -232,6 +244,7 @@ document.addEventListener('keydown', e => {
       el.classList.add('hidden');
       document.body.style.overflow = '';
     });
+    if (window.__bhSetPaused) window.__bhSetPaused(false);
   }
 });
 
@@ -255,6 +268,8 @@ function switchTab(t) {
   document.querySelectorAll('.tab').forEach((el, i) => {
     el.classList.toggle('active', ['search', 'upload'][i] === t);
   });
+  // The back-to-top button is gated on the Search tab being active.
+  if (typeof updateScrollTopBtn === 'function') updateScrollTopBtn();
 }
 
 
@@ -397,13 +412,13 @@ function showCorsHelper(imgUrl) {
 
   const msg = document.createElement('span');
   msg.className   = 'cors-helper-msg';
-  msg.textContent = "⚠ NASA's CDN blocked direct pixel access for this image.";
+  msg.textContent = "NASA's CDN blocked direct pixel access for this image.";
   wrapper.appendChild(msg);
 
   const btn = document.createElement('button');
   btn.id        = 'cors-fetch-btn';
   btn.className = 'cors-fetch-btn';
-  btn.textContent = '⬇ Load image for analysis';
+  btn.textContent = 'Load image for analysis';
   btn.addEventListener('click', () => fetchAndLoadImage(imgUrl));
   wrapper.appendChild(btn);
 
@@ -456,7 +471,7 @@ async function fetchAndLoadImage(imgUrl, title) {
     el.innerHTML     = '';
     const m = document.createElement('span');
     m.className   = 'cors-helper-msg';
-    m.textContent = '⬇ Image opened in a new tab — save it, then drag it onto the drop zone above, or click the zone to browse.';
+    m.textContent = 'Image opened in a new tab — save it, then drag it onto the drop zone above, or click the zone to browse.';
     el.appendChild(m);
   }
 }
@@ -472,21 +487,50 @@ async function fetchAndLoadImage(imgUrl, title) {
 
 /**
  * Search the NASA Image Library and render result cards.
- * Called by the Search button and Enter key in the search input.
- * @param {number} [page=1] - Page number (20 results per page).
+ *
+ * Pagination is handled by INFINITE SCROLL: the first call (no arg or page=1)
+ * is a reset — reads the input value, clears the grid, fetches page 1. Subsequent
+ * calls with page>1 are append-mode and reuse the stored query string; an
+ * IntersectionObserver on #nasa-sentinel fires those calls automatically as the
+ * user scrolls toward the bottom of the results.
+ *
+ * @param {number} [page] - Page number. Omit for a fresh search from the input.
  */
 async function nasaSearch(page) {
-  const q = document.getElementById('nasa-q').value.trim().slice(0, 200);
-  if (!q) return;
+  const isReset = !page || page === 1;
 
-  state.nasaQuery = q;
-  state.nasaPage  = page || 1;
+  let q;
+  if (isReset) {
+    q = document.getElementById('nasa-q').value.trim().slice(0, 200);
+    if (!q) return;
+    state.nasaQuery = q;
+    state.nasaPage  = 1;
+  } else {
+    q = state.nasaQuery;
+    if (!q) return;
+    state.nasaPage = page;
+  }
 
-  const btn = document.getElementById('nasa-btn');
-  btn.disabled = true;
-  showStatus('nasa-status', '<span class="spinner"></span>Searching NASA image library…');
-  document.getElementById('nasa-grid').innerHTML = '';
-  document.getElementById('nasa-pager').classList.add('hidden');
+  // Prevent double-fetch when the observer fires while a request is already in flight
+  if (state.nasaLoading) return;
+  state.nasaLoading = true;
+
+  const btn      = document.getElementById('nasa-btn');
+  const grid     = document.getElementById('nasa-grid');
+  const sentinel = document.getElementById('nasa-sentinel');
+
+  if (isReset) {
+    btn.disabled = true;
+    showStatus('nasa-status', '<span class="spinner"></span>Searching NASA image library…');
+    grid.innerHTML = '';
+    if (sentinel) {
+      sentinel.classList.remove('active', 'loading', 'end');
+      sentinel.querySelector('.sentinel-text').textContent = 'Scroll to load more';
+    }
+  } else if (sentinel) {
+    sentinel.classList.add('loading');
+    sentinel.querySelector('.sentinel-text').textContent = 'Loading more…';
+  }
 
   try {
     const url = `https://images-api.nasa.gov/search` +
@@ -499,17 +543,17 @@ async function nasaSearch(page) {
     const items = data.collection?.items || [];
     state.nasaTotal = data.collection?.metadata?.total_hits || 0;
 
-    hideStatus('nasa-status');
+    if (isReset) hideStatus('nasa-status');
 
-    if (!items.length) {
+    if (!items.length && isReset) {
       showStatus('nasa-status', 'No images found.');
+      state.nasaLoading = false;
       btn.disabled = false;
       return;
     }
 
     // Build and inject image cards using DOM methods (not innerHTML)
     // to prevent XSS from untrusted API titles.
-    const grid = document.getElementById('nasa-grid');
     items.forEach(item => {
       const info  = item.data?.[0] || {};
       const thumb = item.links?.find(l => l.rel === 'preview')?.href || '';
@@ -525,53 +569,81 @@ async function nasaSearch(page) {
       // Only load images from the trusted NASA CDN
       if (thumb.startsWith('https://images-assets.nasa.gov/')) img.src = thumb;
 
-      // "Open Image in New Tab" button — the ONLY interactive element on the card.
-      // Handled synchronously so browsers permit the popup.
-      // The card div itself has no click handler — images never navigate the current page.
+      // "Open Image in New Tab" button — handled synchronously so popups are permitted.
       const newTabBtn = document.createElement('button');
       newTabBtn.className = 'img-card-newtab';
       newTabBtn.setAttribute('type', 'button');
       newTabBtn.setAttribute('aria-label', 'Open image in new tab: ' + title);
-      newTabBtn.textContent = '↗ Open Image in New Tab';
+      newTabBtn.textContent = 'Open Image in New Tab';
       newTabBtn.addEventListener('click', e => {
         e.stopPropagation();
         window.open(thumb, '_blank', 'noopener,noreferrer');
       });
 
-      // Use textContent for all user-visible text to avoid innerHTML injection
       const idiv = document.createElement('div'); idiv.className = 'img-card-info';
       const t    = document.createElement('div'); t.className = 'img-card-title'; t.textContent = title;
       const s    = document.createElement('div'); s.className = 'img-card-sub';   s.textContent = (year ? year + ' · ' : '') + center;
 
       idiv.appendChild(t); idiv.appendChild(s);
       div.appendChild(img); div.appendChild(newTabBtn); div.appendChild(idiv);
-      // Card click → select image for analysis (selectNasaImage resolves the
-      // best URL and kicks off the fetch/pixel-analysis pipeline).
       div.addEventListener('click', () => selectNasaImage(div, thumb, title, nasaId));
       grid.appendChild(div);
     });
 
-    // Show pagination controls when there are more than 20 results
-    const pager = document.getElementById('nasa-pager');
-    if (state.nasaTotal > 20) {
-      pager.classList.remove('hidden');
-      document.getElementById('nasa-pager-info').textContent =
-        `Page ${state.nasaPage} · ${state.nasaTotal.toLocaleString()} results`;
-      document.getElementById('nasa-prev').disabled = state.nasaPage <= 1;
-      document.getElementById('nasa-next').disabled = state.nasaPage * 20 >= state.nasaTotal;
+    // Update sentinel state and the infinite-scroll observer
+    const loadedSoFar  = state.nasaPage * 20;
+    state.nasaHasMore  = loadedSoFar < state.nasaTotal && items.length > 0;
+
+    if (sentinel) {
+      sentinel.classList.remove('loading');
+      sentinel.classList.add('active');
+      const txt = sentinel.querySelector('.sentinel-text');
+      if (state.nasaHasMore) {
+        sentinel.classList.remove('end');
+        const remaining = Math.max(0, state.nasaTotal - loadedSoFar);
+        txt.textContent = `Scroll for more · ${remaining.toLocaleString()} of ${state.nasaTotal.toLocaleString()} remaining`;
+        setupNasaInfiniteScroll();
+      } else {
+        sentinel.classList.add('end');
+        const shown = Math.min(state.nasaTotal, loadedSoFar);
+        txt.textContent = state.nasaTotal
+          ? `End of results · ${shown.toLocaleString()} of ${state.nasaTotal.toLocaleString()} images shown`
+          : `End of results`;
+        if (nasaObserver) nasaObserver.disconnect();
+      }
     }
 
   } catch (e) {
-    showStatus('nasa-status', '⚠ Search failed. Check your connection.', true);
+    if (isReset) {
+      showStatus('nasa-status', 'Search failed. Check your connection.', true);
+    } else if (sentinel) {
+      sentinel.classList.remove('loading');
+      sentinel.querySelector('.sentinel-text').textContent = 'Load failed — scroll again to retry';
+    }
     console.error(e);
   }
 
+  state.nasaLoading = false;
   btn.disabled = false;
 }
 
-/** Move to the adjacent page in NASA search results. */
-function nasaPage(dir) {
-  nasaSearch(state.nasaPage + dir);
+/**
+ * Wire up the IntersectionObserver that drives infinite scroll.
+ * Idempotent — only one observer is created per page life.
+ */
+let nasaObserver = null;
+function setupNasaInfiniteScroll() {
+  if (nasaObserver) return;
+  const sentinel = document.getElementById('nasa-sentinel');
+  if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+  nasaObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting && !state.nasaLoading && state.nasaHasMore) {
+        nasaSearch(state.nasaPage + 1);
+      }
+    });
+  }, { rootMargin: '300px 0px' });
+  nasaObserver.observe(sentinel);
 }
 
 /**
@@ -712,7 +784,7 @@ async function nameLookup() {
   } catch (e) {
     // If it was a deliberate user-facing error (ambiguous, parse fail), re-throw
     if (e.message.startsWith('Ambiguous') || e.message.startsWith('NED returned')) {
-      showStatus('ned-status', '⚠ ' + esc(e.message.slice(0, 120)), true);
+      showStatus('ned-status', esc(e.message.slice(0, 120)), true);
       btn.disabled = false;
       return;
     }
@@ -752,7 +824,7 @@ async function nameLookup() {
 
   } catch (e) {
     const msg = e.message.length < 160 ? e.message : 'Lookup failed. Check name and try again.';
-    showStatus('ned-status', '⚠ ' + esc(msg), true);
+    showStatus('ned-status', esc(msg), true);
   }
 
   btn.disabled = false;
@@ -2026,7 +2098,7 @@ function renderProfileCanvas(id, profile, radii, re) {
  */
 async function runPixelAnalysis() {
   if (!state.imgData) {
-    showStatus('analyze-status', '⚠ Image pixel data not available. Try the Upload tab.', true);
+    showStatus('analyze-status', 'Image pixel data not available. Try the Upload tab.', true);
     return;
   }
 
@@ -2082,7 +2154,7 @@ async function runPixelAnalysis() {
   clogMetric('Centroid position', `(${cx.toFixed(1)}, ${cy.toFixed(1)})`, 'px');
   clogMetric('Offset from image centre', `Δx=${offX}, Δy=${offY}`, 'px');
   if (Math.abs(cx - W/2) > W * 0.15 || Math.abs(cy - H/2) > H * 0.15) {
-    clog('⚠ Centroid far from image centre — galaxy may not be centred in the frame', 'warn');
+    clog('Centroid far from image centre — galaxy may not be centred in the frame', 'warn');
   }
   const eClass = Math.min(7, Math.round(10 * eps));
   clogMetric('Semi-major axis a',  axisA.toFixed(1), 'px');
@@ -2301,7 +2373,7 @@ function renderPixelResults(res) {
     const pxS = res.hubble.startsWith('S'), nedS = nedT === 'S';
     let verdict;
     if ((pxE && nedE) || (pxS && nedS)) {
-      verdict = '<span class="pill pill-match">✓ Agreement</span> Pixel classification and NED catalog broadly agree.';
+      verdict = '<span class="pill pill-match">Agreement</span> Pixel classification and NED catalog broadly agree.';
     } else if (nedT === 'G') {
       verdict = '<span class="pill pill-unknown">~ Unconstrained</span> NED only records "Galaxy" — pixel analysis provides morphological detail.';
     } else {
@@ -2395,7 +2467,7 @@ function toggleRaw() {
 /**
  * Reset the entire application to its initial state.
  * Clears all selections, results, console, status messages,
- * and resets the analyze button. Called by "↩ Analyze another galaxy".
+ * and resets the analyze button. Called by "Analyze another galaxy".
  */
 function resetAll() {
   // Clear state
@@ -2418,6 +2490,22 @@ function resetAll() {
   // Clear NASA grid and result cards
   document.getElementById('nasa-grid').innerHTML = '';
 
+  // Reset the infinite-scroll sentinel and disconnect the observer
+  const sentinel = document.getElementById('nasa-sentinel');
+  if (sentinel) {
+    sentinel.classList.remove('active', 'loading', 'end');
+    const txt = sentinel.querySelector('.sentinel-text');
+    if (txt) txt.textContent = 'Scroll to load more';
+  }
+  if (typeof nasaObserver !== 'undefined' && nasaObserver) {
+    nasaObserver.disconnect();
+    nasaObserver = null;
+  }
+  state.nasaPage    = 1;
+  state.nasaQuery   = '';
+  state.nasaHasMore = false;
+  state.nasaLoading = false;
+
   // Reset the raw JSON toggle
   document.getElementById('raw-json').style.display = 'none';
 
@@ -2433,3 +2521,524 @@ function resetAll() {
   // Clear console log
   clearConsole();
 }
+
+
+/* ═══════════════════════════════════════════════════════════
+   §20  NAMED GALAXIES CATALOG
+   ─────────────────────────────────────────────────────────
+   Curated list of well-known galaxies presented in a modal.
+   Each card prefills the NASA search input with a query that
+   reliably returns imagery for that object, then runs the search.
+═══════════════════════════════════════════════════════════ */
+
+/** Curated catalog. `group` controls visual section grouping in the modal. */
+const NAMED_GALAXIES = [
+  // Local Group
+  { name: 'Andromeda',              ids: 'M31 / NGC 224',  type: 'SA(s)b',          group: 'Local Group',    note: 'Nearest large spiral; 2.5 million light-years away.',                  query: 'M31 Andromeda' },
+  { name: 'Triangulum',             ids: 'M33 / NGC 598',  type: 'SA(s)cd',         group: 'Local Group',    note: 'Third-largest Local Group member after Andromeda and the Milky Way.', query: 'M33 Triangulum' },
+  { name: 'Large Magellanic Cloud', ids: 'LMC',            type: 'Irr / SB(s)m',    group: 'Local Group',    note: 'Bright Milky Way satellite visible from the southern hemisphere.',    query: 'Large Magellanic Cloud' },
+  { name: 'Small Magellanic Cloud', ids: 'SMC',            type: 'Irregular',       group: 'Local Group',    note: 'Smaller dwarf companion of the LMC.',                                 query: 'Small Magellanic Cloud' },
+
+  // Spirals
+  { name: 'Whirlpool',              ids: 'M51 / NGC 5194', type: 'SA(s)bc',         group: 'Spirals',        note: 'Grand-design spiral interacting with companion NGC 5195.',            query: 'M51 Whirlpool' },
+  { name: 'Pinwheel',               ids: 'M101 / NGC 5457',type: 'SAB(rs)cd',       group: 'Spirals',        note: 'Face-on spiral with many bright HII regions.',                        query: 'M101 Pinwheel' },
+  { name: 'Sunflower',              ids: 'M63 / NGC 5055', type: 'SA(rs)bc',        group: 'Spirals',        note: 'Flocculent spiral with many short, fragmented arms.',                 query: 'M63 Sunflower' },
+  { name: 'Black Eye',              ids: 'M64 / NGC 4826', type: '(R)SA(rs)ab',     group: 'Spirals',        note: 'Striking dark dust lane crossing the bright nucleus.',                query: 'M64 Black Eye' },
+  { name: "Bode's Galaxy",          ids: 'M81 / NGC 3031', type: 'SA(s)ab',         group: 'Spirals',        note: 'Grand-design spiral with a nearby active galactic nucleus.',          query: 'M81 Bode' },
+  { name: 'Tadpole',                ids: 'UGC 10214',      type: 'SB(s)c pec',      group: 'Spirals',        note: 'Massive 280,000-light-year tidal tail from a recent interaction.',    query: 'Tadpole galaxy' },
+  { name: 'Cartwheel',              ids: 'ESO 350-40',     type: 'S pec (ring)',    group: 'Spirals',        note: 'Ring galaxy formed by a head-on collision.',                          query: 'Cartwheel galaxy' },
+
+  // Barred spirals
+  { name: 'NGC 1300',               ids: 'NGC 1300',       type: 'SB(rs)bc',        group: 'Barred Spirals', note: 'Archetypal barred spiral imaged in detail by Hubble.',                query: 'NGC 1300' },
+  { name: 'NGC 1365',               ids: 'NGC 1365',       type: 'SB(s)b',          group: 'Barred Spirals', note: 'Great Barred Spiral in the Fornax cluster.',                          query: 'NGC 1365' },
+  { name: 'NGC 7479',               ids: 'NGC 7479',       type: 'SB(s)c',          group: 'Barred Spirals', note: 'Asymmetric barred spiral in Pegasus.',                                query: 'NGC 7479' },
+
+  // Lenticulars
+  { name: 'Sombrero',               ids: 'M104 / NGC 4594',type: 'SA(s)a',          group: 'Lenticular',     note: 'Prominent edge-on dust lane crossing a bright bulge.',                query: 'M104 Sombrero' },
+  { name: 'Spindle',                ids: 'NGC 5866',       type: 'S0',              group: 'Lenticular',     note: 'Edge-on lenticular with a knife-sharp equatorial dust band.',         query: 'NGC 5866' },
+
+  // Ellipticals
+  { name: 'M87',                    ids: 'M87 / NGC 4486', type: 'E1',              group: 'Ellipticals',    note: 'Supergiant elliptical with relativistic jet; first BH ever imaged.',  query: 'M87 elliptical' },
+  { name: 'Centaurus A',            ids: 'NGC 5128',       type: 'S0 pec',          group: 'Ellipticals',    note: 'Peculiar elliptical with a distinctive equatorial dust band.',        query: 'Centaurus A' },
+  { name: 'NGC 4889',               ids: 'NGC 4889',       type: 'E4',              group: 'Ellipticals',    note: 'Brightest galaxy in the Coma Cluster.',                               query: 'NGC 4889' },
+
+  // Starbursts
+  { name: 'Cigar',                  ids: 'M82 / NGC 3034', type: 'I0 (starburst)',  group: 'Starbursts',     note: 'Edge-on starburst with a powerful galactic-scale outflow.',           query: 'M82 Cigar' },
+  { name: 'Sculptor',               ids: 'NGC 253',        type: 'SAB(s)c',         group: 'Starbursts',     note: 'Dusty starburst spiral; brightest galaxy beyond the Local Group.',    query: 'NGC 253 Sculptor' },
+
+  // Mergers / interacting pairs
+  { name: 'Antennae',               ids: 'NGC 4038/4039',  type: 'Sc / SB(s)m pec', group: 'Mergers',        note: 'Mid-collision pair with prominent tidal tails.',                      query: 'Antennae galaxies' },
+  { name: 'Mice',                   ids: 'NGC 4676',       type: 'Sb / SB pec',     group: 'Mergers',        note: 'Interacting pair with parallel tidal streamers.',                     query: 'Mice galaxies' },
+  { name: 'Arp 273',                ids: 'UGC 1810/13',    type: 'S pec (pair)',    group: 'Mergers',        note: 'Rose-shaped interacting pair imaged by Hubble.',                      query: 'Arp 273' },
+];
+
+/** Visual ordering of section groups inside the modal. */
+const NAMED_GROUPS_ORDER = [
+  'Local Group', 'Spirals', 'Barred Spirals', 'Lenticular', 'Ellipticals', 'Starbursts', 'Mergers',
+];
+
+/** Flag so we only build the DOM once (subsequent opens are instant). */
+let _namedRendered = false;
+
+/**
+ * Lazy-init the named-galaxies modal contents and filter binding.
+ * Called from openModal('named'). Safe to call multiple times.
+ */
+function ensureNamedGalaxiesRendered() {
+  if (_namedRendered) return;
+  renderNamedGalaxies(NAMED_GALAXIES);
+
+  // Filter wiring — live-filter as the user types.
+  const filter = document.getElementById('named-filter');
+  if (filter) {
+    filter.addEventListener('input', e => {
+      const q = e.target.value.trim().toLowerCase();
+      if (!q) { renderNamedGalaxies(NAMED_GALAXIES); return; }
+      const out = NAMED_GALAXIES.filter(g =>
+        g.name.toLowerCase().includes(q)  ||
+        g.ids.toLowerCase().includes(q)   ||
+        g.type.toLowerCase().includes(q)  ||
+        g.group.toLowerCase().includes(q) ||
+        g.note.toLowerCase().includes(q));
+      renderNamedGalaxies(out);
+    });
+  }
+  _namedRendered = true;
+}
+
+/**
+ * Render the named-galaxies grid, grouped by category.
+ * Uses textContent everywhere — the curated data is trusted but we
+ * keep the same defensive practice as the rest of the app.
+ *
+ * @param {Array} list - Subset of NAMED_GALAXIES to render.
+ */
+function renderNamedGalaxies(list) {
+  const body  = document.getElementById('named-body');
+  const count = document.getElementById('named-count');
+  if (!body || !count) return;
+
+  body.innerHTML = '';
+  count.textContent = list.length + ' / ' + NAMED_GALAXIES.length + ' galaxies';
+
+  if (!list.length) {
+    const empty = document.createElement('div');
+    empty.className = 'named-empty';
+    empty.textContent = 'No galaxies match your filter.';
+    body.appendChild(empty);
+    return;
+  }
+
+  // Bucket by group, then render in fixed visual order.
+  const byGroup = new Map();
+  list.forEach(g => {
+    if (!byGroup.has(g.group)) byGroup.set(g.group, []);
+    byGroup.get(g.group).push(g);
+  });
+
+  NAMED_GROUPS_ORDER.forEach(groupName => {
+    const items = byGroup.get(groupName);
+    if (!items || !items.length) return;
+
+    const section = document.createElement('section');
+    section.className = 'named-section';
+
+    const hdr = document.createElement('div');
+    hdr.className = 'named-section-hdr';
+    const hdrLbl = document.createElement('span'); hdrLbl.textContent = groupName;
+    const hdrCnt = document.createElement('span'); hdrCnt.className = 'named-section-count'; hdrCnt.textContent = items.length;
+    hdr.appendChild(hdrLbl);
+    hdr.appendChild(hdrCnt);
+    section.appendChild(hdr);
+
+    const grid = document.createElement('div');
+    grid.className = 'named-grid';
+
+    items.forEach(g => {
+      const card = document.createElement('button');
+      card.className = 'named-card';
+      card.type = 'button';
+      card.setAttribute('aria-label', `Load imagery for ${g.name}`);
+
+      const name = document.createElement('div'); name.className = 'named-card-name'; name.textContent = g.name;
+      const ids  = document.createElement('div'); ids.className  = 'named-card-ids';  ids.textContent  = g.ids;
+      const type = document.createElement('div'); type.className = 'named-card-type'; type.textContent = g.type;
+      const note = document.createElement('div'); note.className = 'named-card-note'; note.textContent = g.note;
+      const cta  = document.createElement('div'); cta.className  = 'named-card-cta';  cta.textContent  = 'Load imagery';
+
+      card.appendChild(name);
+      card.appendChild(ids);
+      card.appendChild(type);
+      card.appendChild(note);
+      card.appendChild(cta);
+      card.addEventListener('click', () => loadNamedGalaxy(g));
+      grid.appendChild(card);
+    });
+
+    section.appendChild(grid);
+    body.appendChild(section);
+  });
+}
+
+/**
+ * Handle a click on a named-galaxy card:
+ *   close the modal, ensure the Search tab is active, prefill the input,
+ *   and trigger a search.
+ *
+ * @param {Object} g - Galaxy entry from NAMED_GALAXIES.
+ */
+function loadNamedGalaxy(g) {
+  closeModal('named');
+  switchTab('search');
+  const input = document.getElementById('nasa-q');
+  if (input) input.value = g.query;
+  nasaSearch(1);
+  // Scroll the search results into view smoothly
+  setTimeout(() => {
+    const el = document.getElementById('tab-search');
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   §21  BACK-TO-TOP BUTTON
+   ─────────────────────────────────────────────────────────
+   Visible whenever the Search NASA Library tab is active.
+   Click jumps to the top instantly (no smooth-scroll easing).
+═══════════════════════════════════════════════════════════ */
+
+/** Update the visibility of the back-to-top button. */
+function updateScrollTopBtn() {
+  const btn = document.getElementById('scroll-top-btn');
+  if (!btn) return;
+  btn.classList.toggle('visible', state.tab === 'search');
+}
+
+(function initScrollTopBtn() {
+  const btn = document.getElementById('scroll-top-btn');
+  if (!btn) return;
+  // Instant jump — no smooth-scroll, as requested.
+  btn.addEventListener('click', () => {
+    window.scrollTo(0, 0);
+  });
+  // initial render — Search is the default active tab
+  updateScrollTopBtn();
+})();
+
+
+/* ═══════════════════════════════════════════════════════════
+   §22  PHYSICS CALCULATORS — constants, formatters
+   ─────────────────────────────────────────────────────────
+   SI base units throughout; output formatters pick a human
+   unit at the end. Constants from CODATA / IAU.
+═══════════════════════════════════════════════════════════ */
+
+const PHYS = {
+  C:         299792458,         // m/s — exact, definitional
+  G:         6.67430e-11,       // m³/(kg·s²)
+  KM:        1000,
+  AU:        1.495978707e11,    // m
+  LY:        9.4607304725808e15,// m (Julian year × c)
+  M_SUN:     1.98892e30,        // kg
+  M_EARTH:   5.972e24,
+  M_JUPITER: 1.898e27,
+  M_MOON:    7.342e22,
+};
+
+/** Format a duration in seconds into the most readable human unit. */
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) return '—';
+  if (s === 0) return '0 s';
+  const min = 60, hour = 3600, day = 86400, yr = 365.25 * day;
+  if (s < 1e-3)        return s.toExponential(3) + ' s';
+  if (s < 1)           return (s * 1000).toFixed(2) + ' ms';
+  if (s < min)         return s.toFixed(2) + ' s';
+  if (s < hour)        return (s / min).toFixed(2)  + ' min';
+  if (s < day)         return (s / hour).toFixed(2) + ' hr';
+  if (s < yr)          return (s / day).toFixed(2)  + ' days';
+  if (s < yr * 1e3)    return (s / yr).toFixed(2)   + ' yr';
+  if (s < yr * 1e6)    return (s / (yr * 1e3)).toFixed(2) + ' kyr';
+  if (s < yr * 1e9)    return (s / (yr * 1e6)).toFixed(2) + ' Myr';
+  if (s < yr * 1e12)   return (s / (yr * 1e9)).toFixed(2) + ' Gyr';
+  return (s / (yr * 1e12)).toFixed(2) + ' Tyr';
+}
+
+/** Format a length in metres into a readable astronomical unit. */
+function fmtDist(m) {
+  if (!isFinite(m) || m < 0) return '—';
+  if (m === 0) return '0';
+  if (m < 1e-3)            return m.toExponential(3) + ' m';
+  if (m < 1)               return (m * 1000).toFixed(2) + ' mm';
+  if (m < 1000)            return m.toFixed(2) + ' m';
+  if (m < PHYS.AU)         return (m / PHYS.KM).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' km';
+  if (m < PHYS.LY * 0.01)  return (m / PHYS.AU).toFixed(3) + ' AU';
+  if (m < PHYS.LY * 1e3)   return (m / PHYS.LY).toFixed(3) + ' ly';
+  if (m < PHYS.LY * 1e6)   return (m / (PHYS.LY * 1e3)).toFixed(3) + ' kly';
+  if (m < PHYS.LY * 1e9)   return (m / (PHYS.LY * 1e6)).toFixed(3) + ' Mly';
+  return (m / (PHYS.LY * 1e9)).toFixed(3) + ' Gly';
+}
+
+/** Format a density in kg/m³, choosing scientific notation when extreme. */
+function fmtDensity(rho) {
+  if (!isFinite(rho) || rho < 0) return '—';
+  if (rho === 0) return '0 kg/m³';
+  const abs = Math.abs(rho);
+  if (abs < 1e-2 || abs >= 1e7) {
+    return rho.toExponential(3) + ' kg/m³';
+  }
+  return rho.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' kg/m³';
+}
+
+/** Pretty-print a generic dimensionless number. */
+function fmtNum(n, sig) {
+  sig = sig || 4;
+  if (!isFinite(n)) return '—';
+  if (n === 0) return '0';
+  const abs = Math.abs(n);
+  if (abs < 1e-3 || abs >= 1e7) return n.toExponential(sig);
+  return n.toLocaleString(undefined, { maximumFractionDigits: sig });
+}
+
+/** Pretty-print a volume in m³, jumping to scientific notation when extreme. */
+function fmtVolume(v) {
+  if (!isFinite(v) || v < 0) return '—';
+  const abs = Math.abs(v);
+  if (abs < 1e-3 || abs >= 1e9) return v.toExponential(3) + ' m³';
+  return v.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' m³';
+}
+
+/** Find the named distance preset closest to the given metres value (for narrative). */
+function describeDensity(rho) {
+  // ordered ascending; first whose threshold is BELOW rho is the description
+  const benchmarks = [
+    [1.2,        'less than air (1.2 kg/m³)'],
+    [1000,       'less than water (1,000 kg/m³)'],
+    [7870,       'about the density of iron (7,870 kg/m³)'],
+    [22000,      'denser than the densest metals (osmium ≈ 22,590 kg/m³)'],
+    [1e9,        'beyond any terrestrial material'],
+    [1e15,       'comparable to atomic nuclei'],
+    [1e17,       'similar to neutron star matter (~10¹⁷ kg/m³)'],
+    [1e23,       'far beyond neutron star density'],
+    [Infinity,   'unphysically dense'],
+  ];
+  for (const [thr, desc] of benchmarks) if (rho < thr) return desc;
+  return 'unphysically dense';
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   §23  RELATIVISTIC TRAVEL CALCULATOR
+═══════════════════════════════════════════════════════════ */
+
+const TRAVEL_D_PRESETS = [
+  { label: 'Moon',         m: 384400 * PHYS.KM,    unit: 'km',  raw: 384400 },
+  { label: 'Mars (mean)',  m: 225e6 * PHYS.KM,     unit: 'AU',  raw: 225e6 * PHYS.KM / PHYS.AU },
+  { label: 'Voyager 1',    m: 162.7 * PHYS.AU,     unit: 'AU',  raw: 162.7 },
+  { label: 'Proxima',      m: 4.2465 * PHYS.LY,    unit: 'ly',  raw: 4.2465 },
+  { label: 'TRAPPIST-1',   m: 39.46 * PHYS.LY,     unit: 'ly',  raw: 39.46 },
+  { label: 'Sgr A*',       m: 26000 * PHYS.LY,     unit: 'kly', raw: 26 },
+  { label: 'Andromeda',    m: 2.537e6 * PHYS.LY,   unit: 'Mly', raw: 2.537 },
+];
+
+const TRAVEL_UNIT_FACTORS = {
+  m: 1, km: PHYS.KM, AU: PHYS.AU, ly: PHYS.LY,
+  kly: PHYS.LY * 1e3, Mly: PHYS.LY * 1e6,
+};
+
+let _travelInit = false;
+function ensureTravelInit() {
+  if (_travelInit) return;
+  _travelInit = true;
+
+  // Wire up preset buttons for distance
+  const dPresetEl = document.getElementById('travel-d-presets');
+  TRAVEL_D_PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p.label;
+    b.addEventListener('click', () => {
+      document.getElementById('travel-d').value = p.raw;
+      document.getElementById('travel-d-unit').value = p.unit;
+      updateTravelCalc();
+    });
+    dPresetEl.appendChild(b);
+  });
+
+  // Speed presets
+  document.querySelectorAll('#travel-v-presets button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.getElementById('travel-v').value = b.dataset.v;
+      updateTravelCalc();
+    });
+  });
+
+  // Live recalculation
+  ['travel-v', 'travel-d', 'travel-d-unit'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input',  updateTravelCalc);
+    el.addEventListener('change', updateTravelCalc);
+  });
+
+  updateTravelCalc();
+}
+
+function updateTravelCalc() {
+  let v = parseFloat(document.getElementById('travel-v').value);
+  if (!isFinite(v) || v < 0) v = 0;
+  // Cap just under 1 to avoid Infinity; UI still shows the entered value
+  const vSafe = Math.min(v, 0.9999999999);
+
+  const dRaw  = parseFloat(document.getElementById('travel-d').value);
+  const dUnit = document.getElementById('travel-d-unit').value;
+  const dM    = (isFinite(dRaw) && dRaw >= 0 ? dRaw : 0) * (TRAVEL_UNIT_FACTORS[dUnit] || 1);
+
+  const gamma = 1 / Math.sqrt(Math.max(1 - vSafe * vSafe, 1e-30));
+  const vMS   = vSafe * PHYS.C;
+  const t     = vMS > 0 ? dM / vMS : Infinity;       // Earth-frame time, seconds
+  const tau   = t / gamma;                            // Ship-frame proper time
+  const dCon  = dM / gamma;                           // Length-contracted distance
+
+  const setText = (id, val) => document.getElementById(id).textContent = val;
+  setText('travel-r-gamma', fmtNum(gamma, 4));
+  setText('travel-r-t',     v > 0 ? fmtTime(t)    : '—');
+  setText('travel-r-tau',   v > 0 ? fmtTime(tau)  : '—');
+  setText('travel-r-d',     fmtDist(dCon));
+
+  // Narrative
+  let narrative;
+  if (v <= 0) {
+    narrative = 'Enter a non-zero speed to compute travel times.';
+  } else if (v >= 1) {
+    narrative = 'No massive object can reach the speed of light. Try a value below 1.';
+  } else if (v < 0.01) {
+    narrative = 'At sub-relativistic speeds, ship-frame and Earth-frame times are virtually identical (γ ≈ 1).';
+  } else if (v < 0.5) {
+    narrative = 'Time dilation is measurable but minor — onboard clocks lag Earth clocks by a factor of γ = ' + gamma.toFixed(4) + '.';
+  } else if (v < 0.95) {
+    narrative = 'Relativistic effects are pronounced. A ' + fmtTime(tau) + ' subjective journey corresponds to ' + fmtTime(t) + ' on Earth.';
+  } else if (v < 0.999) {
+    narrative = 'Highly relativistic: time aboard ship dilates by ×' + gamma.toFixed(2) + '. The ship sees the distance contracted to ' + fmtDist(dCon) + '.';
+  } else {
+    narrative = 'Ultra-relativistic regime (γ = ' + fmtNum(gamma, 3) + '). The ship traverses what looks externally like ' + fmtDist(dM) + ' in just ' + fmtTime(tau) + ' of its own time.';
+  }
+  document.getElementById('travel-narrative').textContent = narrative;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   §24  SCHWARZSCHILD CALCULATOR
+═══════════════════════════════════════════════════════════ */
+
+const SCHWARZ_PRESETS = [
+  { label: 'Human',  m: 70,                       unit: 'kg' },
+  { label: 'Moon',   m: PHYS.M_MOON,              unit: 'kg' },
+  { label: 'Earth',  m: 1,                        unit: 'M_earth' },
+  { label: 'Jupiter',m: PHYS.M_JUPITER,           unit: 'kg' },
+  { label: 'Sun',    m: 1,                        unit: 'M_sun' },
+  { label: '10 M☉',  m: 10,                       unit: 'M_sun' },
+  { label: '100 M☉', m: 100,                      unit: 'M_sun' },
+  { label: 'Sgr A*', m: 4.297e6,                  unit: 'M_sun' },
+  { label: 'M87*',   m: 6.5e9,                    unit: 'M_sun' },
+];
+
+const SCHWARZ_UNIT_FACTORS = {
+  kg: 1, t: 1000, M_earth: PHYS.M_EARTH, M_sun: PHYS.M_SUN,
+};
+
+let _schwarzInit = false;
+function ensureSchwarzInit() {
+  if (_schwarzInit) return;
+  _schwarzInit = true;
+
+  const presetEl = document.getElementById('schwarz-presets');
+  SCHWARZ_PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p.label;
+    b.addEventListener('click', () => {
+      document.getElementById('schwarz-m').value = p.m;
+      document.getElementById('schwarz-m-unit').value = p.unit;
+      updateSchwarzCalc();
+    });
+    presetEl.appendChild(b);
+  });
+
+  ['schwarz-m', 'schwarz-m-unit'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input',  updateSchwarzCalc);
+    el.addEventListener('change', updateSchwarzCalc);
+  });
+
+  updateSchwarzCalc();
+}
+
+function updateSchwarzCalc() {
+  const mRaw  = parseFloat(document.getElementById('schwarz-m').value);
+  const mUnit = document.getElementById('schwarz-m-unit').value;
+  const m     = (isFinite(mRaw) && mRaw >= 0 ? mRaw : 0) * (SCHWARZ_UNIT_FACTORS[mUnit] || 1);
+
+  // r_s = 2GM/c²
+  const rs   = 2 * PHYS.G * m / (PHYS.C * PHYS.C);
+  const vol  = (4 / 3) * Math.PI * rs * rs * rs;
+  const rho  = vol > 0 ? m / vol : Infinity;
+
+  const setText = (id, val) => document.getElementById(id).textContent = val;
+  setText('schwarz-r-rs',   m > 0 ? fmtDist(rs) : '—');
+  setText('schwarz-r-d',    m > 0 ? fmtDist(rs * 2) : '—');
+  setText('schwarz-r-rho',  m > 0 ? fmtDensity(rho) : '—');
+
+  // Compare to a few benchmarks for context
+  let cmp;
+  if (m <= 0) {
+    cmp = '—';
+  } else if (rs < 1e-15) {
+    cmp = 'subatomic — smaller than a proton (~10⁻¹⁵ m)';
+  } else if (rs < 1e-9) {
+    cmp = 'smaller than an atom (~10⁻¹⁰ m)';
+  } else if (rs < 1e-3) {
+    cmp = 'smaller than a millimetre';
+  } else if (rs < 1) {
+    cmp = 'between a marble and a basketball';
+  } else if (rs < 100) {
+    cmp = 'between a room and a city block';
+  } else if (rs < PHYS.KM) {
+    cmp = 'a few hundred metres across';
+  } else if (rs < PHYS.AU) {
+    cmp = 'a city to a small moon (' + (rs / PHYS.KM).toFixed(1) + ' km)';
+  } else if (rs < PHYS.LY * 0.001) {
+    cmp = 'comparable to a solar-system scale (' + (rs / PHYS.AU).toFixed(2) + ' AU)';
+  } else {
+    cmp = 'a sizeable fraction of a light-year';
+  }
+  setText('schwarz-r-comp', cmp);
+
+  // Narrative
+  let narrative;
+  if (m <= 0) {
+    narrative = 'Enter a positive mass to compute the Schwarzschild radius.';
+  } else if (m < PHYS.M_SUN * 1e-6) {
+    narrative = 'For everyday masses, the Schwarzschild radius is fantastically tiny — ' + describeDensity(rho) + ' would be required to compress this mass into a black hole.';
+  } else if (m < 3 * PHYS.M_SUN) {
+    narrative = 'Below the Tolman-Oppenheimer-Volkoff limit (~2-3 M☉) gravitational collapse to a black hole is suppressed by neutron degeneracy pressure. The required density (' + describeDensity(rho) + ') is realised inside actual neutron stars, but their mass is too low to overcome that pressure.';
+  } else if (m < 1e5 * PHYS.M_SUN) {
+    narrative = 'Stellar-mass black hole range. Required density: ' + describeDensity(rho) + '. Real stars with M ≳ 25 M☉ undergo core collapse at the end of nuclear burning, producing such black holes.';
+  } else if (m < 1e9 * PHYS.M_SUN) {
+    narrative = 'Supermassive black hole range. The horizon spans ' + fmtDist(rs) + ' yet the average density is only ' + fmtDensity(rho) + ' — for the largest masses this is lower than water.';
+  } else {
+    narrative = 'Ultramassive regime. Density falls as M⁻²: at this mass the average density inside the event horizon is essentially negligible — ' + fmtDensity(rho) + '.';
+  }
+  document.getElementById('schwarz-narrative').textContent = narrative;
+}
+
+
+/* ─────────────────────────────────────────────────────────
+   Hook lazy-init into openModal so calculators don't allocate
+   DOM listeners until the user actually opens them.
+───────────────────────────────────────────────────────── */
+const _openModalPhys = openModal;
+openModal = function(id) {
+  if (id === 'travel')  ensureTravelInit();
+  if (id === 'schwarz') ensureSchwarzInit();
+  _openModalPhys(id);
+};
