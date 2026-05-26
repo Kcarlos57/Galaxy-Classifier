@@ -155,6 +155,46 @@
       return clamp(a * b, 0.0, 1.0);
     }
 
+    /* Distant galaxy — soft elliptical gas cloud with a brighter core,
+       a hint of spiral structure, and a tint drawn from a curated palette.
+       These are background decoration only: low contrast, kept clear of the
+       black-hole region by the caller, and additive-blended so they read
+       as faint glow rather than solid shapes. */
+    vec3 galaxy(vec2 uv, vec2 center, float scale, float rot,
+                float ratio, vec3 tint, float seed) {
+      vec2 p = uv - center;
+      // rotate into the galaxy's local frame
+      float cs = cos(rot), sn = sin(rot);
+      p = vec2(cs * p.x - sn * p.y, sn * p.x + cs * p.y);
+      // squash along the minor axis (disk inclination)
+      p.y /= max(ratio, 0.05);
+      float rr = length(p) / scale;
+      if (rr > 2.4) return vec3(0.0);
+
+      float ang = atan(p.y, p.x);
+
+      // Spiral-arm modulation: two-arm pattern that winds with radius.
+      // Detuned per-galaxy via the seed argument so they don't all look identical.
+      float arms = 0.5 + 0.5 * cos(2.0 * ang + rr * (3.4 + seed * 0.7) + seed);
+      arms = pow(arms, 1.6);
+
+      // Cloudy substructure
+      vec2 q  = vec2(ang * 1.7 + rr * 2.2 + seed * 4.0, rr * 2.6);
+      float n = fbm(q);
+
+      // Soft Gaussian envelope + brighter inner halo + tight core
+      float halo = exp(-rr * rr * 1.3);
+      float bulge = exp(-rr * rr * 5.5);
+      float core  = exp(-rr * rr * 28.0);
+
+      // Combine: halo carries arms+noise; bulge & core stay smooth & warm
+      float cloud = halo * (0.35 + 0.55 * arms + 0.75 * n * arms);
+      float warm  = bulge * 0.9 + core * 1.8;
+
+      vec3 c = tint * cloud + mix(tint, vec3(1.05, 0.95, 0.85), 0.55) * warm;
+      return c;
+    }
+
     void main() {
       // Normalize to height; y-up so the disk tilt feels natural
       vec2 uv = (gl_FragCoord.xy - 0.5 * uR.xy) / uR.y;
@@ -195,7 +235,69 @@
         float n = fbm(nUV);
         n = pow(n, 2.5);
         vec3 nebCol = mix(vec3(0.18, 0.07, 0.02), vec3(0.45, 0.20, 0.08), n);
-        col += nebCol * n * 0.16;
+        col += nebCol * n * 0.10;
+      }
+
+      /* ── 2b. Background galaxies — colourful gas clouds ──────
+         A scattered spectrum of small distant galaxies. Each one renders
+         in a slightly parallax-shifted frame: very small parallax factors
+         make them feel "pinned to the back wall" relative to the strong
+         mouse-driven motion of the foreground galaxies (added in step 8).
+         A soft radial fade keeps them clear of the BH so the disk stays
+         the focal point. */
+      {
+        vec3 g = vec3(0.0);
+        // Slow, gentle drift — different phase per galaxy to avoid lockstep
+        float td = t * 0.022;
+
+        // Background parallax: very small reverse shift on top of the global
+        // uv parallax → these galaxies barely move with the mouse.
+        // (uM is roughly in [-1, 1].)
+        #define BG_PARALLAX(amt) (lensed - uM * (amt))
+
+        // Hue spectrum across the deep field: blue, magenta, teal, gold,
+        // violet, rose, amber, jade, peach and ice.
+        g += galaxy(BG_PARALLAX(0.018) + vec2(sin(td*0.7)*0.015, cos(td*0.9)*0.010),
+                    vec2(-0.72,  0.34), 0.20,  0.55, 0.45,
+                    vec3(0.55, 0.75, 1.55), 1.3);
+        g += galaxy(BG_PARALLAX(0.012) + vec2(-sin(td*0.6)*0.012, cos(td*0.8)*0.014),
+                    vec2( 0.70, -0.30), 0.22, -0.80, 0.40,
+                    vec3(1.35, 0.55, 1.00), 2.7);
+        g += galaxy(BG_PARALLAX(0.024) + vec2(cos(td*0.5)*0.014, sin(td*1.1)*0.012),
+                    vec2(-0.58, -0.40), 0.16,  1.30, 0.55,
+                    vec3(0.45, 1.20, 1.05), 4.1);
+        g += galaxy(BG_PARALLAX(0.010) + vec2(sin(td*1.1)*0.010, -cos(td*0.7)*0.014),
+                    vec2( 0.60,  0.40), 0.18, -0.30, 0.42,
+                    vec3(1.45, 1.00, 0.50), 5.5);
+        g += galaxy(BG_PARALLAX(0.020) + vec2(cos(td*0.9)*0.014, sin(td*0.6)*0.010),
+                    vec2(-0.25,  0.46), 0.12,  2.10, 0.30,
+                    vec3(1.05, 0.60, 1.40), 6.9);
+        g += galaxy(BG_PARALLAX(0.014) + vec2(-cos(td*0.8)*0.012, sin(td*1.0)*0.014),
+                    vec2( 0.30, -0.46), 0.13,  0.95, 0.50,
+                    vec3(0.65, 0.90, 1.55), 8.2);
+        g += galaxy(BG_PARALLAX(0.026) + vec2(sin(td*0.5)*0.018, cos(td*0.5)*0.012),
+                    vec2(-0.85,  0.04), 0.11, -1.40, 0.65,
+                    vec3(1.35, 0.75, 0.40), 9.4);
+        g += galaxy(BG_PARALLAX(0.008) + vec2(-sin(td*0.7)*0.014, cos(td*0.6)*0.012),
+                    vec2( 0.85,  0.08), 0.12,  0.20, 0.48,
+                    vec3(0.75, 1.30, 0.85), 10.7);
+        // Small distant pair near the top/bottom edges
+        g += galaxy(BG_PARALLAX(0.030),
+                    vec2( 0.05,  0.46), 0.09,  1.70, 0.35,
+                    vec3(1.35, 0.80, 1.10), 12.1);
+        g += galaxy(BG_PARALLAX(0.028),
+                    vec2(-0.10, -0.46), 0.10, -0.60, 0.40,
+                    vec3(0.95, 1.05, 1.40), 13.8);
+
+        #undef BG_PARALLAX
+
+        // Soft fade as galaxies approach the BH — keeps the lensed disk
+        // visually dominant without hard-cutting them.
+        float clear = smoothstep(0.28, 0.55, r0);
+        g *= clear;
+
+        // Bright, painterly contribution — these are the secondary spectacle.
+        col += g * 1.45;
       }
 
       /* ── 3. Lensed back arc — the disk wrapping OVER the BH ── */
@@ -278,6 +380,35 @@
       /* ── 7. Event horizon — pure black mask ─────────────────── */
       float horizon = smoothstep(BH_R, BH_R + 0.004, r0);
       col *= horizon;
+
+      /* ── 8. Foreground galaxies — passing in front of the BH ──
+         A small set of large, diffuse gas clouds with strong parallax
+         (they shift noticeably with the mouse), painted AFTER the event
+         horizon mask so they read as wispy material drifting in front of
+         the black hole. Additive blend keeps them translucent — the BH
+         shadow still shows through. */
+      {
+        vec3 fg = vec3(0.0);
+        float td = t * 0.018;
+
+        // Strong forward parallax — these move WITH the mouse, opposite
+        // to the background galaxies' near-static behaviour.
+        #define FG_PARALLAX(amt) (uv + uM * (amt))
+
+        // Two large translucent clouds pushed out to the edges, framing
+        // the black hole rather than overlapping it.
+        fg += galaxy(FG_PARALLAX(0.110) + vec2(sin(td*0.8)*0.020, cos(td*0.9)*0.015),
+                     vec2( 0.95,  0.20), 0.42,  0.85, 0.55,
+                     vec3(0.55, 0.80, 1.40), 20.5);
+        fg += galaxy(FG_PARALLAX(0.150) + vec2(-cos(td*0.7)*0.025, sin(td*1.0)*0.020),
+                     vec2(-0.95, -0.22), 0.38, -1.10, 0.45,
+                     vec3(1.30, 0.55, 1.05), 21.3);
+
+        #undef FG_PARALLAX
+
+        // Translucent contribution — visible but doesn't overpower the BH
+        col += fg * 0.55;
+      }
 
       /* ── Tone mapping + vignette + film grain ──────────────── */
       // soft Reinhard-ish tone map

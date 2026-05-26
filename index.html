@@ -81,15 +81,24 @@
       </ul>
     </div>
 
-    <div class="bh-side-actions">
-      <button class="icon-btn" onclick="openModal('named')">Named Galaxies</button>
-      <button class="icon-btn" onclick="openModal('travel')">Relativistic Travel</button>
-      <button class="icon-btn" onclick="openModal('schwarz')">Schwarzschild Calculator</button>
-      <button class="icon-btn" onclick="openModal('redshift')">Redshift Calculator</button>
-      <button class="icon-btn" onclick="openModal('ladder')">Distance Ladder</button>
-      <button class="icon-btn" onclick="openModal('crossmatch')">Object Cross-Match</button>
-      <button class="icon-btn" onclick="openModal('methodology')">How It Works</button>
-      <button class="icon-btn" onclick="openModal('security')">Security</button>
+    <div class="bh-side-group">
+      <div class="bh-side-group-lbl">Original Function</div>
+      <div class="bh-side-actions">
+        <button class="icon-btn" onclick="openModal('methodology')">How It Works</button>
+        <button class="icon-btn" onclick="openModal('security')">Security</button>
+      </div>
+    </div>
+
+    <div class="bh-side-group">
+      <div class="bh-side-group-lbl">Addons</div>
+      <div class="bh-side-actions">
+        <button class="icon-btn" onclick="openModal('named')">Named Galaxies</button>
+        <button class="icon-btn" onclick="openModal('travel')">Relativistic Travel</button>
+        <button class="icon-btn" onclick="openModal('schwarz')">Schwarzschild Calculator</button>
+        <button class="icon-btn" onclick="openModal('redshift')">Redshift Calculator</button>
+        <button class="icon-btn" onclick="openModal('ladder')">Distance Ladder</button>
+        <button class="icon-btn" onclick="openModal('crossmatch')">Object Cross-Match</button>
+      </div>
     </div>
   </div>
 </aside>
@@ -871,8 +880,9 @@
             <li><strong>Inner zone</strong>: pixels within 0.4 × r<sub>e</sub> of the centroid (most likely to contain the bar)</li>
             <li><strong>Outer zone</strong>: pixels between 0.4 × r<sub>e</sub> and 1.5 × r<sub>e</sub> (the surrounding disk)</li>
           </ul>
-          <p>Each zone produces its own axis ratio and position angle. The bar score combines two signals: <strong>inner elongation</strong> (is the core significantly non-circular?) and <strong>PA alignment</strong> (does the inner elongation point the same direction as the outer disk? A real bar should — if the two position angles differ by more than ~30°, the elongation is likely from inclination, not a bar).</p>
-          <div class="meth-formula">bar_score = inner_elongation × (1 − PA_difference / 30°)</div>
+          <p>Each zone produces its own axis ratio and position angle. The bar score combines two signals: <strong>inner elongation</strong> (is the core significantly non-circular?) and <strong>PA alignment</strong> (does the inner elongation point the same direction as the outer disk? A real bar should — if the two position angles differ by more than ~30°, the elongation is likely from inclination, not a bar). The formula has two tiers:</p>
+          <div class="meth-formula">if elongation &gt; 0.25 and PA_diff &lt; 30°: &nbsp; bar_score = elongation × (1 − PA_diff / 30°)<br>if elongation &gt; 0.20 and PA_diff &lt; 40°: &nbsp; bar_score = elongation × 0.5<br>otherwise: &nbsp; bar_score = 0</div>
+          <p style="margin-top:8px;font-size:14px;color:var(--text2);">The stronger tier applies when the core is distinctly elongated <em>and</em> well-aligned with the disk; the weaker tier catches marginal cases. The bar is flagged only when a threshold is met in either tier.</p>
           <p>A bar score above 0.22 classifies the galaxy as barred (SB). Above 0.35 is considered a strong, confident detection.</p>
         </section>
 
@@ -911,7 +921,7 @@
           </div>
           <div class="meth-tree-step">
             <div class="meth-tree-num">3</div>
-            <div><strong>Check for Lenticular (S0):</strong> If n ≥ 2.0, C ≥ 2.5, A &lt; 0.18, spiral score &lt; 0.30, and bar score &lt; 0.25, the galaxy is classified as <strong>Lenticular</strong>. These are disk-shaped galaxies that have consumed or lost their star-forming gas — the disk shape of a spiral with the featureless smoothness of an elliptical.</div>
+            <div><strong>Check for Lenticular (S0):</strong> If 2.0 ≤ n &lt; 3.5, C ≥ 2.5, A &lt; 0.18, spiral score &lt; 0.30, and bar score &lt; 0.25, the galaxy is classified as <strong>Lenticular</strong>. The upper bound n &lt; 3.5 prevents genuine ellipticals from falling through; the remaining conditions require a smooth, featureless disk. These are disk-shaped galaxies that have consumed or lost their star-forming gas — the disk shape of a spiral with the featureless smoothness of an elliptical.</div>
           </div>
           <div class="meth-tree-step">
             <div class="meth-tree-num">4</div>
@@ -1021,8 +1031,10 @@
         load external resources or phone home.
       </div>
       <div class="sec-fix">
-        CSP meta tag in the &lt;head&gt; restricts scripts to self+inline, images to four trusted
-        astronomy CDNs, and network connections to the three astronomy APIs only.
+        CSP meta tag in the &lt;head&gt; restricts scripts to self+inline; images to three trusted
+        astronomy domains (<code>images-assets.nasa.gov</code>, <code>alasky.cds.unistra.fr</code>,
+        <code>alaskybis.cds.unistra.fr</code>); network connections to six endpoints (four astronomy
+        APIs plus two CDS mirrors); and fonts to Google Fonts only.
       </div>
     </div>
 
@@ -1034,8 +1046,10 @@
         crashing the browser tab or causing the canvas decoder to fail silently.
       </div>
       <div class="sec-fix">
-        Upload restricted to <code>image/jpeg, image/png, image/webp, image/gif</code> at the input
-        <code>accept</code> attribute level, with an additional JS size check capped at 10 MB.
+        Both MIME type and file size are enforced in JavaScript — the <code>accept</code> attribute
+        is a UI hint only and can be bypassed. <code>handleFile()</code> checks
+        <code>file.type</code> against <code>ALLOWED_TYPES</code> and rejects anything over 10 MB
+        before any pixel data is read.
       </div>
     </div>
 

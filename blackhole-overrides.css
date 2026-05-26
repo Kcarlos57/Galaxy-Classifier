@@ -211,6 +211,25 @@ body {
   gap: 8px;
 }
 
+/* Group block: small uppercase label + button stack underneath.
+   Two of these stack inside the sidebar — "Original Function" and "Addons".
+   Same label treatment as .bh-data-sources-lbl for consistency. */
+.bh-side-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bh-side-group-lbl {
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--text3);
+  text-transform: uppercase;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--glass-edge);
+}
+
 .bh-side-actions .icon-btn {
   text-align: left;
   width: 100%;
@@ -261,6 +280,16 @@ body {
   }
   .bh-side-actions .icon-btn {
     width: auto;
+  }
+  .bh-side-group {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+  .bh-side-group-lbl {
+    border-bottom: none;
+    padding-bottom: 0;
+    white-space: nowrap;
   }
 }
 
