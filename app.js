@@ -545,7 +545,9 @@ async function nasaSearch(page) {
 
       idiv.appendChild(t); idiv.appendChild(s);
       div.appendChild(img); div.appendChild(newTabBtn); div.appendChild(idiv);
-      // No card-level click handler — the tooltip button is the sole action.
+      // Card click → select image for analysis (selectNasaImage resolves the
+      // best URL and kicks off the fetch/pixel-analysis pipeline).
+      div.addEventListener('click', () => selectNasaImage(div, thumb, title, nasaId));
       grid.appendChild(div);
     });
 
@@ -888,7 +890,9 @@ dropZone.addEventListener('drop', e => {
 
 // Handle file-picker selection
 fileInput.addEventListener('change', e => {
-  if (e.target.files[0]) handleFile(e.target.files[0]);
+  const file = e.target.files[0];
+  fileInput.value = ''; // reset so the same file can be re-selected after analysis
+  if (file) handleFile(file);
 });
 
 /**

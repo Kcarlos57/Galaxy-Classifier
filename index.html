@@ -28,6 +28,7 @@
                https://alaskybis.cds.unistra.fr;
              connect-src
                https://images-api.nasa.gov
+               https://images-assets.nasa.gov
                https://ned.ipac.caltech.edu
                https://simbad.cds.unistra.fr
                https://alasky.cds.unistra.fr
@@ -100,8 +101,11 @@
 
   <!-- Tab 2: Local file upload -->
   <div id="tab-upload" class="hidden">
+    <!-- file-input lives OUTSIDE drop-zone so its programmatic .click() doesn't
+         bubble back up to drop-zone and re-trigger the onclick (which would cause
+         an infinite-click loop that mobile Safari blocks entirely). -->
+    <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif">
     <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp,image/gif">
       <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden="true"
            style="margin-bottom:10px;opacity:.35;">
         <circle cx="18" cy="18" r="13" stroke="#EF9F27" stroke-width="1"/>

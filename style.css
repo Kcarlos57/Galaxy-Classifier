@@ -414,6 +414,19 @@ body {
   outline:      none;
 }
 
+/*
+ * Touch / hover-incapable devices (phones, tablets):
+ * The :hover selector never fires, so the button must always be visible.
+ * @media (hover: none) targets any primary pointing device that can't hover.
+ */
+@media (hover: none) {
+  .img-card-newtab {
+    opacity:        1;
+    pointer-events: auto;
+    transform:      translate(-50%, -50%) scale(1);
+  }
+}
+
 .img-card:hover {
   border-color: var(--amber2);
 }
