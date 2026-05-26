@@ -85,6 +85,9 @@
       <button class="icon-btn" onclick="openModal('named')">Named Galaxies</button>
       <button class="icon-btn" onclick="openModal('travel')">Relativistic Travel</button>
       <button class="icon-btn" onclick="openModal('schwarz')">Schwarzschild Calculator</button>
+      <button class="icon-btn" onclick="openModal('redshift')">Redshift Calculator</button>
+      <button class="icon-btn" onclick="openModal('ladder')">Distance Ladder</button>
+      <button class="icon-btn" onclick="openModal('crossmatch')">Object Cross-Match</button>
       <button class="icon-btn" onclick="openModal('methodology')">How It Works</button>
       <button class="icon-btn" onclick="openModal('security')">Security</button>
     </div>
@@ -451,6 +454,226 @@
 
       <div class="calc-footnote">
         Formulae: r<sub>s</sub> = 2GM/c² · V = ⁴⁄₃πr<sub>s</sub>³ · ρ<sub>crit</sub> = 3c⁶ / (32πG³M²). Density falls inversely as M² — supermassive black holes have surprisingly low average densities (Sgr A*'s is ~10⁶ kg/m³; M87*'s is below water).
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     COSMOLOGICAL REDSHIFT CALCULATOR MODAL
+     Maps redshift z → lookback time, ages, and the three
+     standard cosmological distances using a flat ΛCDM model
+     (Planck 2018: H0=67.4, Ωm=0.315, ΩΛ=0.685).
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-redshift" role="dialog" aria-modal="true" aria-label="Cosmological redshift calculator">
+  <div class="modal calc-modal">
+    <button class="modal-close" onclick="closeModal('redshift')" aria-label="Close">Close</button>
+
+    <h2>Redshift Calculator</h2>
+    <div class="modal-sub">
+      Convert a galaxy's spectroscopic redshift z into cosmological distances and a lookback time. Uses a flat ΛCDM cosmology with the Planck 2018 parameters (H<sub>0</sub> = 67.4 km/s/Mpc, Ω<sub>m</sub> = 0.315, Ω<sub>Λ</sub> = 0.685). Comoving distance is computed by numerical integration of dz′/E(z′).
+    </div>
+
+    <div class="calc-body">
+
+      <!-- Context bar shown only when a galaxy with a known z is loaded -->
+      <div class="calc-context-bar hidden" id="redshift-context">
+        <div>
+          <span>Current galaxy: </span>
+          <strong id="redshift-context-name"></strong>
+          <span> · z = </span>
+          <strong id="redshift-context-z"></strong>
+        </div>
+        <button type="button" id="redshift-use-current">Use this z</button>
+      </div>
+
+      <div class="calc-field">
+        <div class="calc-field-row">
+          <label for="redshift-z" class="calc-label">Redshift z</label>
+          <div class="calc-input-wrap">
+            <input type="number" id="redshift-z" class="calc-input" step="0.0001" min="0" max="1200" value="0.5">
+            <span class="calc-unit">dimensionless</span>
+          </div>
+        </div>
+        <div class="calc-presets" id="redshift-z-presets">
+          <button type="button" data-z="0.001">0.001 · local</button>
+          <button type="button" data-z="0.01">0.01 · nearby</button>
+          <button type="button" data-z="0.1">0.1</button>
+          <button type="button" data-z="0.5">0.5</button>
+          <button type="button" data-z="1">1</button>
+          <button type="button" data-z="2">2 · cosmic noon</button>
+          <button type="button" data-z="6">6 · reionization</button>
+          <button type="button" data-z="1100">1100 · CMB</button>
+        </div>
+      </div>
+
+      <div class="calc-field">
+        <div class="calc-field-row">
+          <label for="redshift-v" class="calc-label">Recession v</label>
+          <div class="calc-input-wrap">
+            <input type="number" id="redshift-v" class="calc-input" step="any" min="0" value="0">
+            <span class="calc-unit">km/s</span>
+          </div>
+        </div>
+        <div class="calc-presets" id="redshift-v-note">
+          <span class="calc-presets-note" id="redshift-v-note-text">Doppler approximation v ≈ cz holds while z ≪ 1.</span>
+        </div>
+      </div>
+
+      <div class="calc-results">
+        <div class="calc-result">
+          <div class="calc-result-label">Lookback time</div>
+          <div class="calc-result-value" id="redshift-r-lb">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Age at emission</div>
+          <div class="calc-result-value" id="redshift-r-age">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Comoving distance · D<sub>C</sub></div>
+          <div class="calc-result-value" id="redshift-r-dc">—</div>
+        </div>
+        <div class="calc-result calc-result-highlight">
+          <div class="calc-result-label">Luminosity distance · D<sub>L</sub></div>
+          <div class="calc-result-value" id="redshift-r-dl">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Angular-diameter distance · D<sub>A</sub></div>
+          <div class="calc-result-value" id="redshift-r-da">—</div>
+        </div>
+        <div class="calc-result">
+          <div class="calc-result-label">Scale factor a = 1 / (1 + z)</div>
+          <div class="calc-result-value" id="redshift-r-a">—</div>
+        </div>
+      </div>
+
+      <div class="calc-narrative" id="redshift-narrative">—</div>
+
+      <div class="calc-footnote">
+        Cosmological distances depend on the assumed cosmology. The Planck 2018 ΛCDM parameters used here are the standard reference for the early-universe-anchored Hubble constant. Distance-ladder measurements (e.g. Cepheids + SNe Ia) give a higher H<sub>0</sub> ≈ 73 km/s/Mpc — the unresolved "Hubble tension."
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     HUBBLE–LEMAÎTRE DISTANCE LADDER MODAL
+     Six rungs from geometric parallax to the Hubble flow.
+     The rung(s) whose valid range contains the user's
+     input distance light up; the rest are dimmed.
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-ladder" role="dialog" aria-modal="true" aria-label="Distance ladder">
+  <div class="modal calc-modal ladder-modal">
+    <button class="modal-close" onclick="closeModal('ladder')" aria-label="Close">Close</button>
+
+    <h2>Distance Ladder</h2>
+    <div class="modal-sub">
+      The cosmic distance ladder is a sequence of overlapping techniques, each calibrated against the previous rung, used to measure progressively larger distances. Enter a distance to see which rungs of the ladder are valid at that scale.
+    </div>
+
+    <div class="calc-body">
+
+      <div class="calc-context-bar hidden" id="ladder-context">
+        <div>
+          <span>Current galaxy: </span>
+          <strong id="ladder-context-name"></strong>
+          <span> · z = </span>
+          <strong id="ladder-context-z"></strong>
+          <span> · D<sub>C</sub> ≈ </span>
+          <strong id="ladder-context-d"></strong>
+        </div>
+        <button type="button" id="ladder-use-current">Use this distance</button>
+      </div>
+
+      <div class="calc-field">
+        <div class="calc-field-row">
+          <label for="ladder-d" class="calc-label">Distance</label>
+          <div class="calc-input-wrap">
+            <input type="number" id="ladder-d" class="calc-input" step="any" min="0" value="16.5">
+            <select id="ladder-d-unit" class="calc-unit-select">
+              <option value="pc">pc</option>
+              <option value="kpc">kpc</option>
+              <option value="Mpc" selected>Mpc</option>
+              <option value="Gpc">Gpc</option>
+              <option value="ly">ly</option>
+              <option value="kly">kly</option>
+              <option value="Mly">Mly</option>
+              <option value="Gly">Gly</option>
+            </select>
+          </div>
+        </div>
+        <div class="calc-presets" id="ladder-d-presets">
+          <!-- populated by app.js -->
+        </div>
+      </div>
+
+      <div class="calc-narrative" id="ladder-narrative">—</div>
+
+      <div class="ladder-rungs" id="ladder-rungs">
+        <!-- populated by app.js -->
+      </div>
+
+      <div class="calc-footnote">
+        Each rung depends on the calibration of the rung below it, so systematic errors propagate up the ladder. Ranges shown are the practical "sweet spot" for each method; specialised observations can extend them somewhat.
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════
+     OBJECT CROSS-MATCH MODAL
+     Queries NED and SIMBAD in parallel for a name OR
+     decimal RA/Dec, then shows the two answers side-by-side
+     with a per-field agreement verdict.
+═══════════════════════════════════════════ -->
+<div class="modal-overlay hidden" id="modal-crossmatch" role="dialog" aria-modal="true" aria-label="Object cross-match">
+  <div class="modal xm-modal">
+    <button class="modal-close" onclick="closeModal('crossmatch')" aria-label="Close">Close</button>
+
+    <h2>Object Cross-Match</h2>
+    <div class="modal-sub">
+      Query the NASA/IPAC Extragalactic Database (NED) and SIMBAD (Strasbourg) in parallel for the same object, then compare canonical name, coordinates, redshift and object type side-by-side. Cross-catalog disagreement is a useful red flag for identification errors.
+    </div>
+
+    <div class="xm-body">
+
+      <div class="calc-context-bar hidden" id="xm-context">
+        <div>
+          <span>Current galaxy: </span>
+          <strong id="xm-context-name"></strong>
+        </div>
+        <button type="button" id="xm-use-current">Cross-match this object</button>
+      </div>
+
+      <div class="xm-search-row">
+        <input type="text" id="xm-q" class="xm-input" placeholder="Object name or RA, Dec (e.g. NGC 1300 or 49.9209, -19.4049)" maxlength="120" aria-label="Object name or RA, Dec">
+        <button type="button" class="btn btn-amber" id="xm-btn" onclick="runCrossmatch()">Cross-match</button>
+      </div>
+      <div class="xm-hint">Accepts catalog names (NGC, M, IC, 2MASX…) or decimal RA Dec separated by a comma or space.</div>
+
+      <div class="xm-status" id="xm-status"></div>
+
+      <div class="xm-grid hidden" id="xm-grid">
+        <div class="xm-card hidden" id="xm-card-ned">
+          <span class="xm-source-badge">NED</span>
+          <div class="xm-name" id="xm-ned-name">—</div>
+          <div class="xm-fields" id="xm-ned-fields"></div>
+          <div class="xm-alts" id="xm-ned-alts"></div>
+        </div>
+        <div class="xm-card hidden" id="xm-card-simbad">
+          <span class="xm-source-badge">SIMBAD</span>
+          <div class="xm-name" id="xm-simbad-name">—</div>
+          <div class="xm-fields" id="xm-simbad-fields"></div>
+          <div class="xm-alts" id="xm-simbad-alts"></div>
+        </div>
+      </div>
+
+      <div class="xm-verdict hidden" id="xm-verdict">
+        <div class="xm-verdict-title">Cross-catalog agreement</div>
+        <div id="xm-verdict-rows"></div>
       </div>
     </div>
   </div>

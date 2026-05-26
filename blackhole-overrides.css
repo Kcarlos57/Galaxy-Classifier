@@ -995,6 +995,433 @@ body {
 
 
 /* ═══════════════════════════════════════════════════════════
+   15b. CONTEXT BAR (shared)
+   Small amber-tinted bar that surfaces "Current galaxy" data
+   inside the calculator modals when state.nedData is set.
+═══════════════════════════════════════════════════════════ */
+
+.calc-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: rgba(239, 159, 39, 0.07);
+  border: 1px solid rgba(239, 159, 39, 0.45);
+  border-radius: 7px;
+  padding: 9px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.5;
+}
+
+.calc-context-bar strong {
+  color: var(--amber);
+  font-weight: 500;
+  font-family: var(--mono);
+}
+
+.calc-context-bar button {
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: 1px solid rgba(239, 159, 39, 0.55);
+  color: var(--amber);
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.16s, border-color 0.16s;
+}
+
+.calc-context-bar button:hover,
+.calc-context-bar button:focus-visible {
+  background: rgba(239, 159, 39, 0.14);
+  border-color: var(--amber);
+  outline: none;
+}
+
+/* Inline notes shown beside preset rows (e.g. velocity regime note) */
+.calc-presets-note {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--text3);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   15c. DISTANCE LADDER — rung cards
+═══════════════════════════════════════════════════════════ */
+
+.ladder-modal { max-width: 760px; }
+
+.ladder-rungs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.ladder-rung {
+  border: 1px solid var(--glass-edge);
+  border-radius: 8px;
+  background: rgba(8, 6, 14, 0.45);
+  padding: 12px 16px;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  transition: opacity 0.2s, border-color 0.2s, background 0.2s, transform 0.2s;
+}
+
+.ladder-rung-num {
+  font-family: var(--mono);
+  font-size: 22px;
+  color: var(--text3);
+  min-width: 24px;
+  line-height: 1;
+  padding-top: 1px;
+}
+
+.ladder-rung-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ladder-rung-title {
+  font-family: var(--sans);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ladder-rung-range {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text3);
+  letter-spacing: 0.06em;
+  margin-bottom: 6px;
+}
+
+.ladder-rung-desc {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.65;
+}
+
+.ladder-rung-unc {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 5px;
+  letter-spacing: 0.02em;
+}
+
+.ladder-rung--active {
+  border-color: var(--amber);
+  background: rgba(239, 159, 39, 0.07);
+  box-shadow: -3px 0 0 0 var(--amber) inset, 0 0 16px rgba(239, 159, 39, 0.08);
+}
+
+.ladder-rung--active .ladder-rung-num {
+  color: var(--amber);
+}
+
+.ladder-rung--inactive {
+  opacity: 0.32;
+}
+
+.ladder-applicable-badge {
+  font-size: 9px;
+  font-family: var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  background: rgba(239, 159, 39, 0.15);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.ladder-applicable-badge.hidden { display: none; }
+
+
+/* ═══════════════════════════════════════════════════════════
+   15d. OBJECT CROSS-MATCH — modal
+═══════════════════════════════════════════════════════════ */
+
+.xm-modal {
+  max-width: 760px;
+  padding: 0;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.xm-modal .modal-close {
+  top: 16px;
+  right: 18px;
+}
+
+.xm-modal h2,
+.xm-modal .modal-sub {
+  padding-left: 28px;
+  padding-right: 60px;
+}
+
+.xm-modal h2 { padding-top: 24px; }
+
+.xm-modal .modal-sub {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--glass-edge);
+  line-height: 1.6;
+}
+
+.xm-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 28px 24px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.xm-search-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.xm-input {
+  flex: 1;
+  background: rgba(8, 6, 14, 0.55);
+  border: 1px solid var(--glass-edge);
+  border-radius: 7px;
+  padding: 10px 14px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.18s;
+}
+
+.xm-input:focus {
+  border-color: var(--amber);
+}
+
+.xm-input::placeholder { color: var(--text3); }
+
+.xm-hint {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--text3);
+  font-style: italic;
+}
+
+.xm-status {
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text2);
+  min-height: 18px;
+}
+
+.xm-status-err { color: var(--coralL); }
+.xm-status .spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 1.5px solid rgba(239, 159, 39, 0.28);
+  border-top-color: var(--amber);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -2px;
+  margin-right: 10px;
+}
+
+.xm-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 600px) {
+  .xm-grid { grid-template-columns: 1fr; }
+}
+
+.xm-card {
+  background: rgba(8, 6, 14, 0.55);
+  border: 1px solid var(--glass-edge);
+  border-radius: 9px;
+  padding: 14px 16px 12px;
+  position: relative;
+  min-width: 0;
+}
+
+.xm-card-err {
+  border-color: rgba(216, 90, 48, 0.45);
+  background: rgba(216, 90, 48, 0.05);
+}
+
+.xm-source-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text3);
+  background: rgba(2, 2, 8, 0.55);
+  border: 1px solid var(--glass-edge);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.xm-name {
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--amber);
+  margin-bottom: 10px;
+  padding-right: 56px;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.xm-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.xm-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--glass-edge);
+}
+
+.xm-field:last-of-type { border-bottom: none; }
+
+.xm-field-key {
+  color: var(--text3);
+  font-family: var(--sans);
+}
+
+.xm-field-val {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: right;
+  word-break: break-word;
+}
+
+.xm-error-msg {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--coralL);
+  padding: 8px 0;
+  line-height: 1.5;
+}
+
+.xm-alts {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.7;
+  font-family: var(--mono);
+  padding-top: 8px;
+  border-top: 1px solid var(--glass-edge);
+}
+
+.xm-alts:empty { display: none; }
+
+.xm-alts-label {
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+
+/* Cross-catalog agreement verdict */
+.xm-verdict {
+  background: rgba(2, 2, 8, 0.55);
+  border: 1px solid var(--glass-edge);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+
+.xm-verdict-title {
+  font-family: var(--sans);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 8px;
+}
+
+.xm-verdict-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--glass-edge);
+}
+
+.xm-verdict-row:last-child { border-bottom: none; }
+
+.xm-verdict-key {
+  color: var(--text2);
+  font-family: var(--sans);
+  flex: 1;
+}
+
+.xm-verdict .pill {
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 10px;
+  white-space: nowrap;
+}
+
+.xm-verdict .pill-agree {
+  background: rgba(29, 158, 117, 0.18);
+  color: var(--tealL);
+  border: 1px solid rgba(29, 158, 117, 0.55);
+}
+
+.xm-verdict .pill-differ {
+  background: rgba(216, 90, 48, 0.18);
+  color: var(--coralL);
+  border: 1px solid rgba(216, 90, 48, 0.55);
+}
+
+.xm-verdict .pill-one {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text3);
+  border: 1px solid var(--glass-edge);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
    16. BACK-TO-TOP BUTTON (Search tab only)
    Floating pill, bottom-right. Visible only while the Search
    tab is active AND the user has scrolled past the threshold.

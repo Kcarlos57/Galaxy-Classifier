@@ -3042,3 +3042,716 @@ openModal = function(id) {
   if (id === 'schwarz') ensureSchwarzInit();
   _openModalPhys(id);
 };
+
+
+/* ═══════════════════════════════════════════════════════════
+   §25  COSMOLOGY — Planck 2018 ΛCDM
+   ─────────────────────────────────────────────────────────
+   Constants extend the PHYS object. cosmoCalc(z) numerically
+   integrates the flat-ΛCDM distance-redshift relations via
+   Simpson's rule (N=1000, sufficient for 5+ digit precision).
+═══════════════════════════════════════════════════════════ */
+
+PHYS.H0       = 67.4;                  // km/s/Mpc (Planck 2018)
+PHYS.OMEGA_M  = 0.315;
+PHYS.OMEGA_L  = 0.685;
+PHYS.MPC      = 3.085677581e22;        // metres per megaparsec
+PHYS.PC       = 3.085677581e16;        // metres per parsec
+PHYS.T_HUBBLE = 1 / ((PHYS.H0 * 1000) / PHYS.MPC); // s
+
+/** ΛCDM dimensionless expansion rate: E(z) = sqrt(Ωm(1+z)³ + ΩΛ) */
+function cosmoE(z) {
+  return Math.sqrt(PHYS.OMEGA_M * Math.pow(1 + z, 3) + PHYS.OMEGA_L);
+}
+
+/**
+ * Simpson's rule on f(z') from 0 to z.
+ * @param {(z:number)=>number} f
+ * @param {number} z  upper limit
+ * @param {number} steps  must be even
+ */
+function simpson(f, z, steps) {
+  steps = steps || 1000;
+  if (z <= 0) return 0;
+  if (steps % 2) steps++;
+  const h = z / steps;
+  let sum = f(0) + f(z);
+  for (let i = 1; i < steps; i++) {
+    sum += (i % 2 === 0 ? 2 : 4) * f(i * h);
+  }
+  return (h / 3) * sum;
+}
+
+/**
+ * Standard ΛCDM distance + time set for a given redshift z.
+ * All distances returned in metres; times in seconds.
+ *
+ *   DC = (c/H0) ∫₀ᶻ dz'/E(z')           comoving (Mpc → m)
+ *   DL = DC · (1+z)                      luminosity
+ *   DA = DC / (1+z)                      angular diameter
+ *   t_L = (1/H0) ∫₀ᶻ dz' / ((1+z')·E(z'))  lookback time
+ *   t_emit = t0 - t_L                    age of universe at emission
+ *
+ * @param {number} z
+ * @returns {{DC:number, DL:number, DA:number, lookback:number, ageEmit:number, ageNow:number}}
+ */
+function cosmoCalc(z) {
+  if (z < 0 || !isFinite(z)) z = 0;
+
+  // c / H0 expressed in metres: (c [m/s]) / (H0_SI [1/s])
+  const H0_SI    = (PHYS.H0 * 1000) / PHYS.MPC;
+  const cOverH0m = PHYS.C / H0_SI;
+
+  const integralD = simpson(zp => 1 / cosmoE(zp), z, 1000);
+  const DC = cOverH0m * integralD;
+  const DL = DC * (1 + z);
+  const DA = DC / (1 + z);
+
+  // Lookback (integrate to z) and present age (integrate to a huge upper limit).
+  const integralT = simpson(zp => 1 / ((1 + zp) * cosmoE(zp)), z, 1000);
+  // Integrate to z=10000 ≈ infinity for the present-day age (matter+Λ dominates;
+  // truncating at very large z is fine because the integrand decays as z^-2.5)
+  const integralAgeNow = simpson(zp => 1 / ((1 + zp) * cosmoE(zp)), 10000, 4000);
+
+  const lookback = integralT     / H0_SI;
+  const ageNow   = integralAgeNow / H0_SI;
+  const ageEmit  = ageNow - lookback;
+
+  return { DC, DL, DA, lookback, ageEmit, ageNow };
+}
+
+/** Pretty-print a distance given in megaparsecs. */
+function fmtMpc(mpc) {
+  if (!isFinite(mpc) || mpc < 0) return '—';
+  if (mpc === 0) return '0';
+  if (mpc < 0.001) return (mpc * 1e6).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' pc';
+  if (mpc < 1)     return (mpc * 1000).toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' kpc';
+  if (mpc < 1000)  return mpc.toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' Mpc';
+  return (mpc / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }) + ' Gpc';
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   §26  COSMOLOGICAL REDSHIFT CALCULATOR
+═══════════════════════════════════════════════════════════ */
+
+let _redshiftInit = false;
+function ensureRedshiftInit() {
+  if (_redshiftInit) return;
+  _redshiftInit = true;
+
+  // Z presets
+  document.querySelectorAll('#redshift-z-presets button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.getElementById('redshift-z').value = b.dataset.z;
+      updateRedshiftCalc('z');
+    });
+  });
+
+  // Live recalc on z input
+  document.getElementById('redshift-z').addEventListener('input', () => updateRedshiftCalc('z'));
+  // Reverse direction: v → z, valid only in linear regime
+  document.getElementById('redshift-v').addEventListener('input', () => updateRedshiftCalc('v'));
+
+  // Context-bar "Use this z" button
+  document.getElementById('redshift-use-current').addEventListener('click', () => {
+    if (state.nedData && state.nedData.z != null) {
+      document.getElementById('redshift-z').value = state.nedData.z;
+      updateRedshiftCalc('z');
+    }
+  });
+
+  // Populate context bar each open if we have a galaxy
+  updateRedshiftContextBar();
+  updateRedshiftCalc('z');
+}
+
+function updateRedshiftContextBar() {
+  const bar = document.getElementById('redshift-context');
+  if (!bar) return;
+  if (state.nedData && state.nedData.z != null) {
+    document.getElementById('redshift-context-name').textContent = state.nedData.name || 'object';
+    document.getElementById('redshift-context-z').textContent    = Number(state.nedData.z).toString();
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+function updateRedshiftCalc(driver) {
+  driver = driver || 'z';
+
+  let z = parseFloat(document.getElementById('redshift-z').value);
+  const vInput = document.getElementById('redshift-v');
+
+  if (driver === 'v') {
+    const v = parseFloat(vInput.value);
+    if (isFinite(v) && v >= 0) {
+      // Doppler (linear) — only meaningful at low z
+      z = (v * 1000) / PHYS.C;
+      document.getElementById('redshift-z').value = z.toFixed(6);
+    }
+  }
+
+  if (!isFinite(z) || z < 0) z = 0;
+  if (z > 1200) z = 1200;
+
+  // Sync recession-velocity field
+  const noteText = document.getElementById('redshift-v-note-text');
+  if (z < 0.1) {
+    vInput.disabled = false;
+    if (driver !== 'v') vInput.value = ((z * PHYS.C) / 1000).toFixed(2);
+    noteText.textContent = 'Doppler approximation v ≈ cz holds while z ≪ 1.';
+    noteText.style.color = '';
+  } else {
+    vInput.disabled = true;
+    vInput.value    = '';
+    noteText.textContent = 'Non-linear regime (z ≥ 0.1) — recession velocity is not a single well-defined quantity; use the cosmological distances instead.';
+    noteText.style.color = 'var(--text3)';
+  }
+
+  const r = cosmoCalc(z);
+  const DC_mpc = r.DC / PHYS.MPC;
+  const DL_mpc = r.DL / PHYS.MPC;
+  const DA_mpc = r.DA / PHYS.MPC;
+
+  const setText = (id, v) => document.getElementById(id).textContent = v;
+  setText('redshift-r-lb',  z > 0 ? fmtTime(r.lookback) : '0');
+  setText('redshift-r-age', fmtTime(r.ageEmit));
+  setText('redshift-r-dc',  fmtMpc(DC_mpc));
+  setText('redshift-r-dl',  fmtMpc(DL_mpc));
+  setText('redshift-r-da',  fmtMpc(DA_mpc));
+  setText('redshift-r-a',   fmtNum(1 / (1 + z), 4));
+
+  // Narrative
+  let narrative;
+  if (z <= 0) {
+    narrative = 'At z = 0 we are seeing the object as it is now (in our own past light cone of zero length).';
+  } else if (z < 0.01) {
+    narrative = 'Local-universe redshift. The recession is dominated by peculiar velocity (~few hundred km/s scatter) more than by cosmic expansion. Distance is best measured with the lower rungs of the distance ladder.';
+  } else if (z < 0.3) {
+    narrative = 'Standard cosmological distance. We see this galaxy as it was ' + fmtTime(r.lookback) + ' ago, when the universe was ' + fmtTime(r.ageEmit) + ' old.';
+  } else if (z < 1) {
+    narrative = 'Significantly redshifted. The universe was ' + (100 * r.ageEmit / r.ageNow).toFixed(0) + '% of its present age when this light was emitted.';
+  } else if (z < 3) {
+    narrative = 'Distant galaxy near "cosmic noon" (z ≈ 2) — the peak epoch of star formation in the universe.';
+  } else if (z < 10) {
+    narrative = 'Deep universe. We see this object during reionization, less than ' + fmtTime(r.ageEmit) + ' after the Big Bang.';
+  } else if (z < 1000) {
+    narrative = 'Extreme redshift. The universe was a tiny fraction of its current age when this light was emitted; almost no galaxies exist this early.';
+  } else {
+    narrative = 'You have reached the surface of last scattering (z ≈ 1100): the cosmic microwave background. This is not a galaxy — it is the moment the universe became transparent, ~380,000 years after the Big Bang.';
+  }
+  document.getElementById('redshift-narrative').textContent = narrative;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   §27  DISTANCE LADDER
+═══════════════════════════════════════════════════════════ */
+
+const LADDER_RUNGS = [
+  {
+    n: 1, name: 'Geometric parallax',
+    minPc: 0.001, maxPc: 1e4,
+    range: '0.001 pc → 10 kpc',
+    desc: 'Trigonometric parallax from the baseline of Earth\'s orbit. Hipparcos and Gaia measure tiny apparent shifts of nearby stars as we go around the Sun; the distance follows directly from d = 1/p (parsecs, arcsec). The only purely geometric rung.',
+    unc:  '±1–5% nearby, degrading with distance',
+  },
+  {
+    n: 2, name: 'Spectroscopic parallax',
+    minPc: 10, maxPc: 1e4,
+    range: '10 pc → 10 kpc',
+    desc: 'Spectral type + luminosity class give an absolute magnitude via the HR diagram; comparison with apparent magnitude yields distance via the distance modulus. Also called main-sequence fitting when applied to entire clusters.',
+    unc:  '±10–20%',
+  },
+  {
+    n: 3, name: 'Cepheid variables',
+    minPc: 100, maxPc: 3e7,
+    range: '100 pc → 30 Mpc',
+    desc: 'Classical Cepheids obey a tight period–luminosity relation (Leavitt 1912): longer pulsation periods mean intrinsically brighter stars. The cornerstone of the extragalactic ladder and primary calibrator for H₀ via SH0ES.',
+    unc:  '±5–10%',
+  },
+  {
+    n: 4, name: 'Type Ia supernovae',
+    minPc: 1e6, maxPc: 1e9,
+    range: '1 Mpc → 1 Gpc',
+    desc: 'Standardisable candles with peak M ≈ −19.3 after Phillips light-curve-shape correction. Bright enough to be seen across cosmological distances; discovered the accelerating expansion of the universe in 1998.',
+    unc:  '±5–7%',
+  },
+  {
+    n: 5, name: 'Tully–Fisher / Faber–Jackson',
+    minPc: 5e6, maxPc: 2e8,
+    range: '5 Mpc → 200 Mpc',
+    desc: 'Spiral rotation speed (TF) and elliptical velocity dispersion (FJ) both correlate with intrinsic luminosity. Calibrated against Cepheid-distance galaxies in shared clusters.',
+    unc:  '±15–25%',
+  },
+  {
+    n: 6, name: 'Hubble flow (redshift)',
+    minPc: 5e7, maxPc: 1.4e10,
+    range: '50 Mpc → observable horizon',
+    desc: 'Hubble–Lemaître law v = H₀·d: recession velocity from spectral redshift, divided by H₀, gives distance. Valid at scales where peculiar velocities are negligible compared to the cosmic flow.',
+    unc:  '±5–15% (incl. H₀ tension)',
+  },
+];
+
+const LADDER_D_PRESETS = [
+  { label: 'Moon',          val: 384400, unit: 'km',
+    factorPc: () => (384400 * PHYS.KM) / PHYS.PC },                        // converted below
+  { label: 'Proxima',       val: 1.301,  unit: 'pc',  factorPc: () => 1 },
+  { label: 'LMC',           val: 50,     unit: 'kpc', factorPc: () => 1e3 },
+  { label: 'Virgo Cluster', val: 16.5,   unit: 'Mpc', factorPc: () => 1e6 },
+  { label: 'Coma Cluster',  val: 100,    unit: 'Mpc', factorPc: () => 1e6 },
+  { label: 'Survey edge',   val: 1,      unit: 'Gpc', factorPc: () => 1e9 },
+];
+
+const LADDER_UNIT_FACTORS = {
+  // → parsecs
+  pc:  1,
+  kpc: 1e3,
+  Mpc: 1e6,
+  Gpc: 1e9,
+  ly:  1 / 3.2615637769,
+  kly: 1e3 / 3.2615637769,
+  Mly: 1e6 / 3.2615637769,
+  Gly: 1e9 / 3.2615637769,
+  // pseudo-units used by presets (converted explicitly below)
+  km:  PHYS.KM / PHYS.PC,
+  m:   1       / PHYS.PC,
+  AU:  PHYS.AU / PHYS.PC,
+};
+
+let _ladderInit = false;
+function ensureLadderInit() {
+  if (_ladderInit) return;
+  _ladderInit = true;
+
+  // Render rung cards once
+  const rungsEl = document.getElementById('ladder-rungs');
+  LADDER_RUNGS.forEach(r => {
+    const card = document.createElement('div');
+    card.className = 'ladder-rung';
+    card.dataset.rung = r.n;
+
+    const num = document.createElement('div'); num.className = 'ladder-rung-num';  num.textContent = String(r.n);
+    const body = document.createElement('div'); body.className = 'ladder-rung-body';
+    const title = document.createElement('div'); title.className = 'ladder-rung-title'; title.textContent = r.name;
+    const badge = document.createElement('span'); badge.className = 'ladder-applicable-badge hidden'; badge.textContent = 'Applicable';
+    title.appendChild(badge);
+
+    const range = document.createElement('div'); range.className = 'ladder-rung-range'; range.textContent = r.range;
+    const desc  = document.createElement('div'); desc.className  = 'ladder-rung-desc';  desc.textContent  = r.desc;
+    const unc   = document.createElement('div'); unc.className   = 'ladder-rung-unc';   unc.textContent   = 'Typical uncertainty: ' + r.unc;
+
+    body.appendChild(title); body.appendChild(range); body.appendChild(desc); body.appendChild(unc);
+    card.appendChild(num);   card.appendChild(body);
+    rungsEl.appendChild(card);
+  });
+
+  // Distance presets
+  const presetEl = document.getElementById('ladder-d-presets');
+  LADDER_D_PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = p.label;
+    b.addEventListener('click', () => {
+      document.getElementById('ladder-d').value = p.val;
+      document.getElementById('ladder-d-unit').value = p.unit;
+      updateLadderCalc();
+    });
+    presetEl.appendChild(b);
+  });
+
+  // Context bar
+  document.getElementById('ladder-use-current').addEventListener('click', () => {
+    if (state.nedData && state.nedData.z != null) {
+      const r = cosmoCalc(Number(state.nedData.z));
+      const mpc = r.DC / PHYS.MPC;
+      document.getElementById('ladder-d').value = mpc.toFixed(3);
+      document.getElementById('ladder-d-unit').value = 'Mpc';
+      updateLadderCalc();
+    }
+  });
+
+  ['ladder-d', 'ladder-d-unit'].forEach(id => {
+    const el = document.getElementById(id);
+    el.addEventListener('input',  updateLadderCalc);
+    el.addEventListener('change', updateLadderCalc);
+  });
+
+  updateLadderContextBar();
+  updateLadderCalc();
+}
+
+function updateLadderContextBar() {
+  const bar = document.getElementById('ladder-context');
+  if (!bar) return;
+  if (state.nedData && state.nedData.z != null) {
+    const r = cosmoCalc(Number(state.nedData.z));
+    document.getElementById('ladder-context-name').textContent = state.nedData.name || 'object';
+    document.getElementById('ladder-context-z').textContent    = Number(state.nedData.z).toString();
+    document.getElementById('ladder-context-d').textContent    = fmtMpc(r.DC / PHYS.MPC);
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+function updateLadderCalc() {
+  const raw  = parseFloat(document.getElementById('ladder-d').value);
+  const unit = document.getElementById('ladder-d-unit').value;
+  const factor = LADDER_UNIT_FACTORS[unit] || 1;
+  const dPc = (isFinite(raw) && raw >= 0 ? raw : 0) * factor;
+
+  let activeCount = 0;
+  LADDER_RUNGS.forEach(r => {
+    const card  = document.querySelector('.ladder-rung[data-rung="' + r.n + '"]');
+    const badge = card.querySelector('.ladder-applicable-badge');
+    const active = dPc >= r.minPc && dPc <= r.maxPc;
+    card.classList.toggle('ladder-rung--active',   active);
+    card.classList.toggle('ladder-rung--inactive', dPc > 0 && !active);
+    badge.classList.toggle('hidden', !active);
+    if (active) activeCount++;
+  });
+
+  // Narrative
+  const dMpc = dPc / 1e6;
+  const dLy  = dPc * 3.2615637769;
+  const narrEl = document.getElementById('ladder-narrative');
+  let narrative;
+  if (dPc <= 0) {
+    narrative = 'Enter a positive distance to highlight the applicable rungs.';
+  } else if (dPc < 0.001) {
+    narrative = 'This distance is within the solar system — well below the regime of any extragalactic rung.';
+  } else if (activeCount === 0 && dPc > 1.4e10) {
+    narrative = 'Beyond the observable universe. The distance ladder is calibrated against light we can actually detect.';
+  } else if (activeCount === 0) {
+    narrative = 'No standard rung covers this regime. Specialised techniques may apply.';
+  } else {
+    const dStr = dMpc < 0.001
+      ? fmtNum(dPc, 3) + ' pc'
+      : dMpc < 1 ? fmtNum(dPc / 1e3, 3) + ' kpc'
+      : dMpc < 1000 ? fmtNum(dMpc, 3) + ' Mpc'
+      : fmtNum(dMpc / 1e3, 3) + ' Gpc';
+    narrative = activeCount + ' rung' + (activeCount === 1 ? ' is' : 's are') + ' applicable at ' + dStr + ' (≈ ' + fmtNum(dLy, 3) + ' ly). Methods overlap so cross-calibration is possible.';
+  }
+  narrEl.textContent = narrative;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   §28  OBJECT CROSS-MATCH (NED + SIMBAD in parallel)
+═══════════════════════════════════════════════════════════ */
+
+let _crossmatchInit = false;
+function ensureCrossmatchInit() {
+  if (_crossmatchInit) return;
+  _crossmatchInit = true;
+
+  document.getElementById('xm-q').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runCrossmatch();
+  });
+  document.getElementById('xm-use-current').addEventListener('click', () => {
+    if (state.nedData && state.nedData.name) {
+      document.getElementById('xm-q').value = state.nedData.name;
+      runCrossmatch();
+    }
+  });
+
+  updateCrossmatchContextBar();
+}
+
+function updateCrossmatchContextBar() {
+  const bar = document.getElementById('xm-context');
+  if (!bar) return;
+  if (state.nedData && state.nedData.name) {
+    document.getElementById('xm-context-name').textContent = state.nedData.name;
+    bar.classList.remove('hidden');
+  } else {
+    bar.classList.add('hidden');
+  }
+}
+
+/**
+ * Parse the cross-match input into either
+ *   { kind: 'coords', ra, dec }   or
+ *   { kind: 'name',   name }
+ * Coords: two decimal numbers separated by comma or whitespace.
+ */
+function xmParseInput(s) {
+  s = String(s || '').trim();
+  if (!s) return null;
+  const m = s.match(/^(-?\d+\.?\d*)[\s,]+(-?\d+\.?\d*)$/);
+  if (m) {
+    const ra  = parseFloat(m[1]);
+    const dec = parseFloat(m[2]);
+    if (isFinite(ra) && isFinite(dec)) return { kind: 'coords', ra, dec };
+  }
+  // sanitise to the same character set NED/SIMBAD accept for catalog names
+  return { kind: 'name', name: s.slice(0, 120) };
+}
+
+/**
+ * Fetch from NED ObjectLookup. Always resolves; on error returns
+ * `{ source:'NED', error: '…' }`.
+ */
+async function xmFetchNed(parsed) {
+  try {
+    let url;
+    if (parsed.kind === 'coords') {
+      url = `https://ned.ipac.caltech.edu/srs/ObjectLookup?ra=${parsed.ra}&dec=${parsed.dec}&radius=0.017`;
+    } else {
+      url = `https://ned.ipac.caltech.edu/srs/ObjectLookup?name=${encodeURIComponent(parsed.name)}`;
+    }
+    const r = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (j.ResultCode === 1) return { source: 'NED', error: 'Ambiguous name — try a more specific identifier.' };
+    if (j.ResultCode === 2) return { source: 'NED', error: 'Not found in NED.' };
+    if (j.ResultCode !== 3) return { source: 'NED', error: 'NED returned code ' + j.ResultCode };
+
+    const pref  = j.Preferred || {};
+    const name  = String(pref.Name  || (parsed.name || '')).slice(0, 100);
+    const ra    = pref.Position?.RA   ?? null;
+    const dec   = pref.Position?.Dec  ?? null;
+    const z     = pref.Redshift?.Value ?? null;
+    const type  = String(pref.ObjType?.Value || '').slice(0, 40);
+    const alts  = Array.isArray(j.Interpreted?.[0]?.AlternateNames)
+      ? j.Interpreted[0].AlternateNames.slice(0, 8).map(a => String(a.Name || a).slice(0, 60))
+      : [];
+
+    return { source: 'NED', name, ra, dec, z, type, altNames: alts, error: null };
+  } catch (e) {
+    return { source: 'NED', error: e.message || 'Network error' };
+  }
+}
+
+/**
+ * Fetch from SIMBAD via two ADQL queries (basic info + alt names).
+ * Always resolves; on error returns `{ source:'SIMBAD', error: '…' }`.
+ */
+async function xmFetchSimbad(parsed) {
+  try {
+    let adql;
+    if (parsed.kind === 'coords') {
+      adql = `SELECT TOP 1 main_id, ra, dec, otype_txt, oid ` +
+             `FROM basic ` +
+             `WHERE CONTAINS(POINT('ICRS', ra, dec), CIRCLE('ICRS', ${parsed.ra}, ${parsed.dec}, 0.017)) = 1 ` +
+             `ORDER BY DISTANCE(POINT('ICRS', ra, dec), POINT('ICRS', ${parsed.ra}, ${parsed.dec}))`;
+    } else {
+      const safe = parsed.name.replace(/'/g, "''");
+      adql = `SELECT TOP 1 main_id, ra, dec, otype_txt, basic.oid AS oid ` +
+             `FROM basic JOIN ident ON basic.oid = ident.oidref WHERE id = '${safe}'`;
+    }
+    const url = 'https://simbad.cds.unistra.fr/simbad/sim-tap/sync' +
+                '?REQUEST=doQuery&LANG=ADQL&FORMAT=json&QUERY=' + encodeURIComponent(adql);
+    const r = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const j = await r.json();
+    if (!j.data || !j.data.length) return { source: 'SIMBAD', error: 'Not found in SIMBAD.' };
+
+    const [mainId, ra, dec, type, oid] = j.data[0];
+
+    // Fetch up to 8 alternate names (and try to grab a redshift via a separate lightweight query)
+    let alts = [];
+    try {
+      const altAdql = `SELECT TOP 8 id FROM ident WHERE oidref = ${oid}`;
+      const altUrl  = 'https://simbad.cds.unistra.fr/simbad/sim-tap/sync' +
+                      '?REQUEST=doQuery&LANG=ADQL&FORMAT=json&QUERY=' + encodeURIComponent(altAdql);
+      const altR = await fetch(altUrl, { mode: 'cors', credentials: 'omit' });
+      if (altR.ok) {
+        const altJ = await altR.json();
+        if (altJ.data) alts = altJ.data.map(row => String(row[0]).slice(0, 60));
+      }
+    } catch (_) { /* alt names are best-effort */ }
+
+    // SIMBAD redshift is in a separate table; try a single attempt, fail silently
+    let z = null;
+    try {
+      const zAdql = `SELECT TOP 1 rvz_redshift FROM basic WHERE oid = ${oid}`;
+      const zUrl  = 'https://simbad.cds.unistra.fr/simbad/sim-tap/sync' +
+                    '?REQUEST=doQuery&LANG=ADQL&FORMAT=json&QUERY=' + encodeURIComponent(zAdql);
+      const zR = await fetch(zUrl, { mode: 'cors', credentials: 'omit' });
+      if (zR.ok) {
+        const zJ = await zR.json();
+        if (zJ.data && zJ.data.length && zJ.data[0][0] != null) z = zJ.data[0][0];
+      }
+    } catch (_) { /* best effort */ }
+
+    return {
+      source: 'SIMBAD',
+      name: String(mainId || '').slice(0, 100),
+      ra, dec, z,
+      type: String(type || '').slice(0, 40),
+      altNames: alts,
+      error: null,
+    };
+  } catch (e) {
+    return { source: 'SIMBAD', error: e.message || 'Network error' };
+  }
+}
+
+/**
+ * Run the cross-match. `q` overrides the input value when supplied.
+ */
+async function runCrossmatch(q) {
+  const inp = document.getElementById('xm-q');
+  if (q != null) inp.value = q;
+  const parsed = xmParseInput(inp.value);
+  if (!parsed) return;
+
+  const btn   = document.getElementById('xm-btn');
+  const stat  = document.getElementById('xm-status');
+  const grid  = document.getElementById('xm-grid');
+  const vBox  = document.getElementById('xm-verdict');
+
+  btn.disabled = true;
+  stat.innerHTML = '<span class="spinner"></span>Querying NED and SIMBAD simultaneously…';
+  stat.classList.remove('xm-status-err');
+  grid.classList.add('hidden');
+  vBox.classList.add('hidden');
+
+  const [ned, simbad] = await Promise.all([xmFetchNed(parsed), xmFetchSimbad(parsed)]);
+
+  btn.disabled = false;
+  stat.innerHTML = '';
+  renderCrossmatch(ned, simbad, parsed);
+}
+
+/** Render the two cards + verdict from the resolved fetch results. */
+function renderCrossmatch(ned, simbad, parsed) {
+  const grid    = document.getElementById('xm-grid');
+  const vBox    = document.getElementById('xm-verdict');
+  const stat    = document.getElementById('xm-status');
+  const nedCard = document.getElementById('xm-card-ned');
+  const simCard = document.getElementById('xm-card-simbad');
+
+  // Helper to populate one card
+  function paint(card, data, nameEl, fieldsEl, altsEl) {
+    if (data.error) {
+      card.classList.add('xm-card-err');
+      nameEl.textContent = '— ' + data.source + ' unavailable —';
+      fieldsEl.innerHTML = '<div class="xm-error-msg"></div>';
+      fieldsEl.querySelector('.xm-error-msg').textContent = data.error;
+      altsEl.textContent = '';
+      card.classList.remove('hidden');
+      return;
+    }
+    card.classList.remove('xm-card-err');
+    nameEl.textContent = data.name || '—';
+    fieldsEl.innerHTML = '';
+    const rows = [
+      ['Object type', data.type || '—'],
+      ['RA (J2000)',  data.ra  != null ? Number(data.ra).toFixed(5)  + '°' : '—'],
+      ['Dec (J2000)', data.dec != null ? Number(data.dec).toFixed(5) + '°' : '—'],
+      ['Redshift z',  data.z   != null ? Number(data.z).toString()          : '—'],
+    ];
+    rows.forEach(([k, v]) => {
+      const row = document.createElement('div'); row.className = 'xm-field';
+      const ke  = document.createElement('span'); ke.className = 'xm-field-key';  ke.textContent = k;
+      const ve  = document.createElement('span'); ve.className = 'xm-field-val';  ve.textContent = v;
+      row.appendChild(ke); row.appendChild(ve);
+      fieldsEl.appendChild(row);
+    });
+    altsEl.textContent = '';
+    if (data.altNames && data.altNames.length) {
+      const lbl = document.createElement('div'); lbl.className = 'xm-alts-label'; lbl.textContent = 'Aliases';
+      altsEl.appendChild(lbl);
+      data.altNames.slice(0, 5).forEach(n => {
+        const el = document.createElement('div'); el.textContent = n; altsEl.appendChild(el);
+      });
+    }
+    card.classList.remove('hidden');
+  }
+
+  paint(nedCard,  ned,    document.getElementById('xm-ned-name'),
+                          document.getElementById('xm-ned-fields'),
+                          document.getElementById('xm-ned-alts'));
+  paint(simCard,  simbad, document.getElementById('xm-simbad-name'),
+                          document.getElementById('xm-simbad-fields'),
+                          document.getElementById('xm-simbad-alts'));
+  grid.classList.remove('hidden');
+
+  // Verdict — only meaningful when at least one source returned data
+  if (ned.error && simbad.error) {
+    stat.classList.add('xm-status-err');
+    stat.innerHTML = '';
+    const m = document.createElement('div'); m.textContent = 'Both catalogs failed: NED — ' + ned.error + ' · SIMBAD — ' + simbad.error;
+    stat.appendChild(m);
+    vBox.classList.add('hidden');
+    return;
+  }
+
+  const rows = [];
+  const pushRow = (key, ok, nedV, simV) => {
+    let pillClass, pillText;
+    if (ned.error || simbad.error)              { pillClass = 'pill-one';    pillText = 'one source only'; }
+    else if (nedV == null && simV == null)      { return; }
+    else if (nedV == null || simV == null)      { pillClass = 'pill-one';    pillText = 'one source only'; }
+    else if (ok)                                { pillClass = 'pill-agree';  pillText = 'agree'; }
+    else                                        { pillClass = 'pill-differ'; pillText = 'differ'; }
+    rows.push({ key, pillClass, pillText, nedV, simV });
+  };
+
+  // Coordinate agreement: within 1 arcsec = ~0.000278 deg
+  let coordsOk = false;
+  if (ned.ra != null && ned.dec != null && simbad.ra != null && simbad.dec != null) {
+    const cosD = Math.cos((Number(ned.dec) * Math.PI) / 180);
+    const dRa  = (Number(ned.ra) - Number(simbad.ra)) * cosD;
+    const dDec = (Number(ned.dec) - Number(simbad.dec));
+    const sepDeg = Math.hypot(dRa, dDec);
+    coordsOk = sepDeg < 0.000278;
+  }
+  pushRow('Coordinates',
+    coordsOk,
+    ned.ra,
+    simbad.ra);
+
+  // Type agreement: same first letter (NED uses 'G', 'GClstr' etc; SIMBAD uses 'Galaxy', 'GroupG' etc.)
+  const tn = (ned.type    || '').toLowerCase();
+  const ts = (simbad.type || '').toLowerCase();
+  const typeOk = tn && ts && (tn.startsWith(ts.slice(0,3)) || ts.startsWith(tn.slice(0,3)) || tn === ts);
+  pushRow('Object type', typeOk, ned.type, simbad.type);
+
+  // Redshift agreement: |Δz| < 0.001
+  const nedZ = ned.z, simZ = simbad.z;
+  const zOk  = nedZ != null && simZ != null && Math.abs(Number(nedZ) - Number(simZ)) < 0.001;
+  pushRow('Redshift z', zOk, nedZ, simZ);
+
+  // Name agreement: case-insensitive equality
+  const nameOk = ned.name && simbad.name && ned.name.toLowerCase().replace(/\s+/g, '') === simbad.name.toLowerCase().replace(/\s+/g, '');
+  pushRow('Canonical name', nameOk, ned.name, simbad.name);
+
+  if (rows.length === 0) {
+    vBox.classList.add('hidden');
+    return;
+  }
+
+  const rowsEl = document.getElementById('xm-verdict-rows');
+  rowsEl.innerHTML = '';
+  rows.forEach(r => {
+    const row = document.createElement('div'); row.className = 'xm-verdict-row';
+    const k   = document.createElement('span'); k.className = 'xm-verdict-key'; k.textContent = r.key;
+    const p   = document.createElement('span'); p.className = 'pill ' + r.pillClass; p.textContent = r.pillText;
+    row.appendChild(k); row.appendChild(p);
+    rowsEl.appendChild(row);
+  });
+  vBox.classList.remove('hidden');
+
+  if (ned.error || simbad.error) {
+    stat.classList.add('xm-status-err');
+    stat.textContent = (ned.error ? 'NED — ' + ned.error : 'SIMBAD — ' + simbad.error) + ' (showing the available source).';
+  }
+}
+
+
+/* ─────────────────────────────────────────────────────────
+   Extend openModal lazy-init wrapper for the three new features.
+───────────────────────────────────────────────────────── */
+const _openModalPhys2 = openModal;
+openModal = function(id) {
+  if (id === 'redshift')   { ensureRedshiftInit();   updateRedshiftContextBar(); }
+  if (id === 'ladder')     { ensureLadderInit();     updateLadderContextBar();   }
+  if (id === 'crossmatch') { ensureCrossmatchInit(); updateCrossmatchContextBar(); }
+  _openModalPhys2(id);
+};
